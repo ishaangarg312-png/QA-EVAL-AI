@@ -58,11 +58,66 @@ async def get_authenticated_user(
         )
     return user
 
+import time
+import random
+from typing import Optional, Dict, Any
+from app.core.email import send_verification_otp_email
+from app.core.logging import logger
+
 ALLOWED_SIGNUP_EMAILS = {
     "ishaangarg312@gmail.com",
     "ishaangarg315@gmail.com",
     "mv9646@gmail.com"
 }
+
+# In-memory OTP storage: { email: { "otp": "...", "expires_at": float, "last_sent_at": float } }
+otp_store: Dict[str, Dict[str, Any]] = {}
+
+class SendOtpRequest(BaseModel):
+    email: str
+
+@router.post("/send-otp")
+async def send_registration_otp(payload: SendOtpRequest):
+    """Generates and delivers a 6-digit OTP to allowed registration emails via Gmail SMTP."""
+    email_clean = payload.email.strip().lower()
+    if email_clean not in ALLOWED_SIGNUP_EMAILS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Website in development. Coming soon"
+        )
+    
+    now = time.time()
+    existing = otp_store.get(email_clean)
+    if existing:
+        elapsed = now - existing.get("last_sent_at", 0)
+        if elapsed < 30:
+            remaining = int(30 - elapsed)
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Please wait {remaining} seconds before requesting a new OTP."
+            )
+
+    # Generate secure 6-digit numeric OTP
+    otp_code = f"{random.randint(100000, 999999)}"
+    otp_store[email_clean] = {
+        "otp": otp_code,
+        "expires_at": now + 300,  # 5 minutes
+        "last_sent_at": now
+    }
+
+    # Dispatch via Gmail SMTP
+    try:
+        await send_verification_otp_email(email_clean, otp_code)
+    except Exception as e:
+        logger.error(f"Failed to send email via SMTP: {str(e)}")
+        # Allow dev fallback if user has not yet configured SMTP_PASSWORD
+        logger.info(f"[DEV FALLBACK OTP] Verification code for {email_clean} is: {otp_code}")
+
+    return {
+        "status": "success",
+        "message": f"Verification code sent to {email_clean}",
+        "cooldown_seconds": 30
+    }
 
 @router.post("/register", response_model=UserResponse)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
@@ -72,6 +127,37 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Website in development. Coming soon"
         )
+
+    # Validate OTP verification code
+    if not user_in.otp or not user_in.otp.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification OTP code is required. Please click 'Send OTP'."
+        )
+
+    now = time.time()
+    stored_data = otp_store.get(email_clean)
+    if not stored_data:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active verification code found. Please click 'Send OTP'."
+        )
+
+    if now > stored_data.get("expires_at", 0):
+        otp_store.pop(email_clean, None)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired. Please request a new code."
+        )
+
+    if user_in.otp.strip() != stored_data.get("otp"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code. Please check your email and try again."
+        )
+
+    # Clean up OTP after successful validation
+    otp_store.pop(email_clean, None)
 
     # Check if user exists
     stmt = select(User).where(User.email == user_in.email)

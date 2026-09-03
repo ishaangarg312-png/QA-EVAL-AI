@@ -26,6 +26,7 @@ class UserCreate(BaseModel):
     password: str
     role: UserRole = UserRole.QA_ENGINEER
     organization_name: Optional[str] = "Default Org"
+    otp: Optional[str] = None
 
 class UserResponse(BaseModel):
     id: str

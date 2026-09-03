@@ -10,7 +10,7 @@ interface AuthContextType {
   googleClientId: string | null;
   login: (email: string, password: string) => Promise<TokenResponse>;
   loginWithGoogle: (idToken: string) => Promise<TokenResponse>;
-  register: (data: { email: string; full_name: string; password: string; role?: string }) => Promise<User>;
+  register: (data: { email: string; full_name: string; password: string; role?: string; otp?: string }) => Promise<User>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -115,7 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return res;
   };
 
-  const register = async (data: { email: string; full_name: string; password: string; role?: string }): Promise<User> => {
+  const register = async (data: { email: string; full_name: string; password: string; role?: string; otp?: string }): Promise<User> => {
     const res = await api.register(data);
     return res;
   };

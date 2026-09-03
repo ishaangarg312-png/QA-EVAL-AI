@@ -8,9 +8,11 @@ import {
   CheckCircle2,
   Bot,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  KeyRound
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { api } from '../../services/api';
 import { UserRole } from '../../types';
 
 declare global {
@@ -31,6 +33,12 @@ export const LoginPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [showGoogleHelp, setShowGoogleHelp] = useState(false);
+
+  // OTP Verification States
+  const [otp, setOtp] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpSending, setOtpSending] = useState(false);
+  const [otpCooldown, setOtpCooldown] = useState(0);
 
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
@@ -87,11 +95,44 @@ export const LoginPage: React.FC = () => {
     }
   }, [googleClientId, tab]);
 
+  useEffect(() => {
+    if (otpCooldown > 0) {
+      const timer = setTimeout(() => setOtpCooldown((prev) => prev - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [otpCooldown]);
+
   const ALLOWED_SIGNUP_EMAILS = [
     'ishaangarg312@gmail.com',
     'ishaangarg315@gmail.com',
     'mv9646@gmail.com',
   ];
+
+  const handleSendOtp = async () => {
+    setError(null);
+    setSuccessMsg(null);
+    const emailClean = email.trim().toLowerCase();
+    if (!emailClean) {
+      setError('Please enter your email address first.');
+      return;
+    }
+    if (!ALLOWED_SIGNUP_EMAILS.includes(emailClean)) {
+      setError('Website in development. Coming soon');
+      return;
+    }
+    setOtpSending(true);
+    try {
+      const res = await api.sendOtp(emailClean);
+      setOtpSent(true);
+      setOtpCooldown(res.cooldown_seconds || 30);
+      setSuccessMsg(`Verification code sent to ${emailClean}! Check your inbox.`);
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Failed to send OTP';
+      setError(msg);
+    } finally {
+      setOtpSending(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,6 +143,10 @@ export const LoginPage: React.FC = () => {
       const emailClean = email.trim().toLowerCase();
       if (!ALLOWED_SIGNUP_EMAILS.includes(emailClean)) {
         setError('Website in development. Coming soon');
+        return;
+      }
+      if (!otp.trim()) {
+        setError('Please enter the 6-digit verification code sent to your email.');
         return;
       }
     }
@@ -117,6 +162,7 @@ export const LoginPage: React.FC = () => {
           full_name: fullName.trim(),
           password,
           role,
+          otp: otp.trim(),
         });
         setSuccessMsg('Account created successfully! Logging you in...');
         await login(email.trim(), password);
@@ -461,22 +507,72 @@ export const LoginPage: React.FC = () => {
               </>
             )}
 
-            {/* Email Field */}
-            <div className="figma-input-wrapper">
-              <div className="figma-input-icon">
-                <Mail size={16} />
+            {/* Email Field with Send/Resend OTP Button */}
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <div className="figma-input-wrapper" style={{ flex: 1 }}>
+                <div className="figma-input-icon">
+                  <Mail size={16} />
+                </div>
+                <input
+                  type="email"
+                  required
+                  name="eval-auth-email"
+                  autoComplete="off"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="Email"
+                  className="figma-input"
+                />
               </div>
-              <input
-                type="email"
-                required
-                name="eval-auth-email"
-                autoComplete="off"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email"
-                className="figma-input"
-              />
+              {tab === 'register' && (
+                <button
+                  type="button"
+                  onClick={handleSendOtp}
+                  disabled={otpSending || otpCooldown > 0}
+                  style={{
+                    height: '42px',
+                    padding: '0 14px',
+                    background: otpCooldown > 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(99, 102, 241, 0.2)',
+                    border: '1px solid',
+                    borderColor: otpCooldown > 0 ? 'rgba(255, 255, 255, 0.1)' : 'rgba(99, 102, 241, 0.4)',
+                    borderRadius: '10px',
+                    color: otpCooldown > 0 ? '#94a3b8' : '#c7d2fe',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: otpSending || otpCooldown > 0 ? 'not-allowed' : 'pointer',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {otpSending ? 'Sending...' : otpCooldown > 0 ? `Resend (${otpCooldown}s)` : (otpSent ? 'Resend OTP' : 'Send OTP')}
+                </button>
+              )}
             </div>
+
+            {/* Verification OTP Field (Shown only on Register) */}
+            {tab === 'register' && (
+              <div className="figma-input-wrapper">
+                <div className="figma-input-icon">
+                  <KeyRound size={16} color={otpSent ? '#818cf8' : '#64748b'} />
+                </div>
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  name="eval-auth-otp"
+                  autoComplete="one-time-code"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                  placeholder={otpSent ? "Enter 6-digit code from email" : "Click 'Send OTP' first"}
+                  className="figma-input"
+                  style={{
+                    letterSpacing: otp ? '4px' : 'normal',
+                    fontWeight: otp ? 700 : 400,
+                    borderColor: otpSent ? 'rgba(99, 102, 241, 0.4)' : undefined
+                  }}
+                />
+              </div>
+            )}
 
             {/* Password Field */}
             <div className="figma-input-wrapper">

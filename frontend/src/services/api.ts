@@ -61,7 +61,12 @@ export const api = {
     return res.data;
   },
 
-  register: async (data: { email: string; full_name: string; password: string; role?: string }): Promise<User> => {
+  sendOtp: async (email: string): Promise<{ status: string; message: string; cooldown_seconds?: number }> => {
+    const res = await apiClient.post('/auth/send-otp', { email });
+    return res.data;
+  },
+
+  register: async (data: { email: string; full_name: string; password: string; role?: string; otp?: string }): Promise<User> => {
     const res = await apiClient.post<User>('/auth/register', data);
     return res.data;
   },
