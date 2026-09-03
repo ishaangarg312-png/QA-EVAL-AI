@@ -46,8 +46,21 @@ async def get_authenticated_user(
         )
     return user
 
+ALLOWED_SIGNUP_EMAILS = {
+    "ishaangarg312@gmail.com",
+    "ishaangarg315@gmail.com",
+    "mv9646@gmail.com"
+}
+
 @router.post("/register", response_model=UserResponse)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    email_clean = user_in.email.strip().lower()
+    if email_clean not in ALLOWED_SIGNUP_EMAILS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Website in development. Coming soon"
+        )
+
     # Check if user exists
     stmt = select(User).where(User.email == user_in.email)
     res = await db.execute(stmt)
@@ -185,6 +198,13 @@ async def google_login(payload: GoogleLoginRequest, db: AsyncSession = Depends(g
     user = res.scalar_one_or_none()
 
     if not user:
+        email_clean = email.strip().lower()
+        if email_clean not in ALLOWED_SIGNUP_EMAILS:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Website in development. Coming soon"
+            )
+
         # Auto-provision user into default organization
         org_stmt = select(Organization).limit(1)
         org_res = await db.execute(org_stmt)

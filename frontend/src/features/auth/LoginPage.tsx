@@ -87,10 +87,25 @@ export const LoginPage: React.FC = () => {
     }
   }, [googleClientId, tab]);
 
+  const ALLOWED_SIGNUP_EMAILS = [
+    'ishaangarg312@gmail.com',
+    'ishaangarg315@gmail.com',
+    'mv9646@gmail.com',
+  ];
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
+
+    if (tab === 'register') {
+      const emailClean = email.trim().toLowerCase();
+      if (!ALLOWED_SIGNUP_EMAILS.includes(emailClean)) {
+        setError('Website in development. Coming soon');
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
