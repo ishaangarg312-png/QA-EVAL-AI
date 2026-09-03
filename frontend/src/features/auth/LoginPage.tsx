@@ -1,0 +1,625 @@
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Lock,
+  Mail,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  CheckCircle2,
+  Bot,
+  Sparkles,
+  ExternalLink
+} from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
+import { UserRole } from '../../types';
+
+declare global {
+  interface Window {
+    google?: any;
+  }
+}
+
+export const LoginPage: React.FC = () => {
+  const { login, loginWithGoogle, register, googleClientId } = useAuth();
+  const [tab, setTab] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [role, setRole] = useState<UserRole>('QA_ENGINEER');
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [showGoogleHelp, setShowGoogleHelp] = useState(false);
+
+  const googleBtnRef = useRef<HTMLDivElement>(null);
+
+  // Load official Google Identity Services script
+  useEffect(() => {
+    if (!googleClientId) return;
+
+    const scriptId = 'google-gsi-client-script';
+    let script = document.getElementById(scriptId) as HTMLScriptElement;
+
+    const initializeGoogle = () => {
+      if (window.google?.accounts?.id && googleBtnRef.current) {
+        window.google.accounts.id.initialize({
+          client_id: googleClientId,
+          callback: async (response: any) => {
+            if (response.credential) {
+              setLoading(true);
+              setError(null);
+              try {
+                await loginWithGoogle(response.credential);
+              } catch (err: any) {
+                const msg = err.response?.data?.detail || err.message || 'Google authentication failed';
+                setError(msg);
+              } finally {
+                setLoading(false);
+              }
+            }
+          },
+        });
+
+        googleBtnRef.current.innerHTML = '';
+        window.google.accounts.id.renderButton(googleBtnRef.current, {
+          theme: 'outline',
+          size: 'large',
+          type: 'standard',
+          shape: 'rectangular',
+          text: 'signin_with',
+          logo_alignment: 'left',
+          width: 338,
+        });
+      }
+    };
+
+    if (!script) {
+      script = document.createElement('script');
+      script.id = scriptId;
+      script.src = 'https://accounts.google.com/gsi/client';
+      script.async = true;
+      script.defer = true;
+      script.onload = initializeGoogle;
+      document.body.appendChild(script);
+    } else {
+      initializeGoogle();
+    }
+  }, [googleClientId, tab]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMsg(null);
+    setLoading(true);
+
+    try {
+      if (tab === 'login') {
+        await login(email.trim(), password);
+      } else {
+        await register({
+          email: email.trim(),
+          full_name: fullName.trim(),
+          password,
+          role,
+        });
+        setSuccessMsg('Account created successfully! Logging you in...');
+        await login(email.trim(), password);
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Authentication failed';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuickDemoLogin = async (demoEmail: string, demoPass: string) => {
+    setError(null);
+    setLoading(true);
+    try {
+      await login(demoEmail, demoPass);
+    } catch (err: any) {
+      const msg = err.response?.data?.detail || err.message || 'Demo login failed';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="figma-auth-container">
+      {/* Background Mesh Grid */}
+      <div className="figma-mesh-bg" />
+
+      {/* Decorative Perspective Corner Mesh (SVG) */}
+      <svg
+        style={{
+          position: 'absolute',
+          bottom: '-40px',
+          left: '-40px',
+          width: '380px',
+          height: '240px',
+          opacity: 0.22,
+          pointerEvents: 'none'
+        }}
+        viewBox="0 0 400 250"
+      >
+        <defs>
+          <linearGradient id="meshPurple" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#818cf8" />
+            <stop offset="100%" stopColor="#c084fc" />
+          </linearGradient>
+        </defs>
+        {Array.from({ length: 12 }).map((_, i) => (
+          <line
+            key={`h-${i}`}
+            x1="0"
+            y1={i * 20}
+            x2="400"
+            y2={i * 12 + 80}
+            stroke="url(#meshPurple)"
+            strokeWidth="0.8"
+          />
+        ))}
+        {Array.from({ length: 16 }).map((_, i) => (
+          <line
+            key={`v-${i}`}
+            x1={i * 25}
+            y1="0"
+            x2={i * 35 - 50}
+            y2="250"
+            stroke="url(#meshPurple)"
+            strokeWidth="0.8"
+          />
+        ))}
+      </svg>
+
+      <svg
+        style={{
+          position: 'absolute',
+          top: '-40px',
+          right: '-40px',
+          width: '380px',
+          height: '240px',
+          opacity: 0.18,
+          pointerEvents: 'none'
+        }}
+        viewBox="0 0 400 250"
+      >
+        {Array.from({ length: 12 }).map((_, i) => (
+          <line
+            key={`th-${i}`}
+            x1="0"
+            y1={i * 12 + 60}
+            x2="400"
+            y2={i * 20}
+            stroke="#818cf8"
+            strokeWidth="0.8"
+          />
+        ))}
+        {Array.from({ length: 16 }).map((_, i) => (
+          <line
+            key={`tv-${i}`}
+            x1={i * 25}
+            y1="0"
+            x2={i * 35 + 40}
+            y2="250"
+            stroke="#818cf8"
+            strokeWidth="0.8"
+          />
+        ))}
+      </svg>
+
+      {/* Main Figma Layout Container */}
+      <div className="figma-auth-layout">
+        
+        {/* ================================================================= */}
+        {/* LEFT COLUMN: Modern Product Hero Showcase                         */}
+        {/* ================================================================= */}
+        <div className="figma-hero-col">
+          
+          {/* Logo Brand Header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '26px',
+              height: '26px',
+              borderRadius: '7px',
+              background: 'linear-gradient(135deg, #6366f1, #a855f7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(99, 102, 241, 0.4)'
+            }}>
+              <Bot size={16} color="#ffffff" />
+            </div>
+            <span style={{ fontSize: '15px', fontWeight: 600, color: '#e2e8f0', letterSpacing: '-0.01em' }}>
+              EVAL AI - Enterprise Agent QA Platform
+            </span>
+          </div>
+
+          {/* Heading */}
+          <h1 style={{ fontSize: '32px', fontWeight: 700, color: '#ffffff', letterSpacing: '-0.03em', margin: 0 }}>
+            Modern product Hero Showcase
+          </h1>
+
+          {/* Hero Showcase Card Container */}
+          <div className="figma-hero-box">
+            
+            {/* Left Box: AI Evaluation Matrix Chart */}
+            <div className="figma-chart-card">
+              <div style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1' }}>
+                AI evaluation matrix
+              </div>
+
+              {/* S-Curve Graph Area */}
+              <div style={{ position: 'relative', width: '100%', height: '180px', margin: '4px 0' }}>
+                <span style={{ position: 'absolute', top: 2, left: 6, fontSize: '9px', color: '#64748b', fontFamily: 'monospace' }}>High ↑</span>
+                <span style={{ position: 'absolute', bottom: 4, left: 6, fontSize: '9px', color: '#64748b', fontFamily: 'monospace' }}>Low</span>
+                <span style={{ position: 'absolute', bottom: 4, right: 6, fontSize: '9px', color: '#64748b', fontFamily: 'monospace' }}>High →</span>
+                <span style={{ position: 'absolute', bottom: 4, left: '50%', transform: 'translateX(-50%)', fontSize: '9px', color: '#64748b', fontFamily: 'monospace' }}>Evaluability</span>
+                <span style={{ position: 'absolute', left: -14, top: '50%', transform: 'translateY(-50%) rotate(-90deg)', fontSize: '8px', color: '#64748b', fontFamily: 'monospace' }}>Evaluation</span>
+
+                <svg style={{ width: '100%', height: '100%', overflow: 'visible' }} viewBox="0 0 200 130">
+                  {/* Grid Lines */}
+                  <line x1="26" y1="20" x2="185" y2="20" stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="3 3" />
+                  <line x1="26" y1="65" x2="185" y2="65" stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="3 3" />
+                  <line x1="26" y1="110" x2="185" y2="110" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+                  <line x1="26" y1="15" x2="26" y2="110" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
+                  <line x1="105" y1="15" x2="105" y2="110" stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="3 3" />
+                  <line x1="185" y1="15" x2="185" y2="110" stroke="rgba(255,255,255,0.06)" strokeWidth="1" strokeDasharray="3 3" />
+
+                  <defs>
+                    <linearGradient id="figmaCurve" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="#38bdf8" />
+                      <stop offset="50%" stopColor="#818cf8" />
+                      <stop offset="100%" stopColor="#c084fc" />
+                    </linearGradient>
+                    <filter id="figmaGlow" x="-30%" y="-30%" width="160%" height="160%">
+                      <feGaussianBlur stdDeviation="3.5" result="blur" />
+                      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                  </defs>
+
+                  {/* Sigmoid Curve */}
+                  <path
+                    d="M 26 102 C 60 98, 80 82, 105 65 C 130 46, 155 30, 185 24"
+                    fill="none"
+                    stroke="url(#figmaCurve)"
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                    filter="url(#figmaGlow)"
+                  />
+                  {/* Luminous Glowing Dot */}
+                  <circle cx="105" cy="65" r="9" fill="rgba(99, 102, 241, 0.35)" />
+                  <circle cx="105" cy="65" r="4.5" fill="#ffffff" stroke="#818cf8" strokeWidth="2" />
+                </svg>
+              </div>
+            </div>
+
+            {/* Right Box: Stats + Dark Glassmorphism Preview */}
+            <div className="figma-stats-col">
+              
+              {/* Stat Boxes */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="figma-stat-card">
+                  <span style={{ fontSize: '20px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>99.9%</span>
+                  <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>Deterministic QA</span>
+                </div>
+                <div className="figma-stat-card">
+                  <span style={{ fontSize: '20px', fontWeight: 800, color: '#ffffff', lineHeight: 1.2 }}>4x</span>
+                  <span style={{ fontSize: '10px', color: '#94a3b8', marginTop: '2px' }}>Distributed Workers</span>
+                </div>
+              </div>
+
+              {/* Elegant dark glassmorphism card */}
+              <div className="figma-preview-card">
+                <div style={{
+                  background: 'rgba(5, 9, 20, 0.9)',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  padding: '10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '6px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '10px', color: '#e2e8f0', fontWeight: 600 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#6366f1' }} />
+                      <span>EVAL AI</span>
+                    </div>
+                    <span style={{ fontSize: '8px', color: '#34d399', background: 'rgba(52, 211, 153, 0.1)', padding: '1px 5px', borderRadius: '4px' }}>
+                      ONLINE
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 500 }}>
+                    AI-Enterprise Agent QA Platform
+                  </div>
+                  <div style={{ height: '4px', width: '100%', background: '#1e293b', borderRadius: '2px', overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: '75%', background: '#6366f1', borderRadius: '2px' }} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8px', color: '#64748b', fontFamily: 'monospace' }}>
+                    <span>Nodes: 14/14</span>
+                    <span>38ms</span>
+                  </div>
+                </div>
+                <span style={{ fontSize: '10px', color: '#94a3b8', textAlign: 'center', marginTop: '6px' }}>
+                  Elegant dark glassmorphism card
+                </span>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* ================================================================= */}
+        {/* RIGHT COLUMN: Exact Figma Log In Card                             */}
+        {/* ================================================================= */}
+        <div className="figma-login-card">
+          
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#ffffff', margin: 0 }}>
+              {tab === 'login' ? 'Log In' : 'Sign Up'}
+            </h2>
+            <button
+              type="button"
+              onClick={() => { setTab(tab === 'login' ? 'register' : 'login'); setError(null); }}
+              style={{
+                fontSize: '11px',
+                color: '#818cf8',
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontWeight: 600,
+              }}
+            >
+              {tab === 'login' ? 'Create Account' : 'Sign In'}
+            </button>
+          </div>
+
+          {/* Feedback Messages */}
+          {error && (
+            <div style={{
+              padding: '8px 12px',
+              borderRadius: '8px',
+              background: 'rgba(244, 63, 94, 0.15)',
+              border: '1px solid rgba(244, 63, 94, 0.3)',
+              fontSize: '11px',
+              color: '#fda4af',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <AlertCircle size={14} color="#f43f5e" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {successMsg && (
+            <div style={{
+              padding: '8px 12px',
+              borderRadius: '8px',
+              background: 'rgba(16, 185, 129, 0.15)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              fontSize: '11px',
+              color: '#6ee7b7',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <CheckCircle2 size={14} color="#10b981" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
+          {/* Google Sign-in Button */}
+          {googleClientId ? (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <div ref={googleBtnRef} style={{ width: '100%' }} />
+            </div>
+          ) : (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowGoogleHelp(!showGoogleHelp)}
+                style={{
+                  width: '100%',
+                  background: '#ffffff',
+                  color: '#1f2937',
+                  borderRadius: '10px',
+                  padding: '10px 16px',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '10px',
+                  boxShadow: '0 2px 6px rgba(0, 0, 0, 0.3)',
+                  boxSizing: 'border-box'
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                  <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z" />
+                  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
+                </svg>
+                <span>Sign in with Google</span>
+              </button>
+
+              {showGoogleHelp && (
+                <div style={{
+                  marginTop: '8px',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  background: 'rgba(99, 102, 241, 0.12)',
+                  border: '1px solid rgba(99, 102, 241, 0.3)',
+                  fontSize: '11px',
+                  color: '#cbd5e1'
+                }}>
+                  <p style={{ margin: '0 0 6px 0', fontWeight: 600, color: '#a5b4fc', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <Sparkles size={13} color="#818cf8" />
+                    Google OAuth is 100% Free
+                  </p>
+                  <p style={{ margin: '0 0 6px 0', fontSize: '10px', lineHeight: 1.4 }}>
+                    To enable 1-click Google Sign-In, add your free Client ID to backend <code style={{ background: '#1e293b', padding: '1px 4px', borderRadius: '3px' }}>.env</code>:
+                  </p>
+                  <pre style={{ margin: 0, padding: '6px', background: '#020617', color: '#34d399', borderRadius: '6px', fontSize: '9px', overflowX: 'auto' }}>
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Divider Line */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ flex: 1, height: '1px', background: 'rgba(255, 255, 255, 0.08)' }} />
+            <span style={{ fontSize: '11px', color: '#64748b' }}>or continue with work email</span>
+            <div style={{ flex: 1, height: '1px', background: 'rgba(255, 255, 255, 0.08)' }} />
+          </div>
+
+          {/* Inputs Form */}
+          <form onSubmit={handleSubmit} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {tab === 'register' && (
+              <>
+                <div className="figma-input-wrapper">
+                  <div className="figma-input-icon">👤</div>
+                  <input
+                    type="text"
+                    required
+                    name="eval-auth-name"
+                    autoComplete="off"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Full Name"
+                    className="figma-input"
+                  />
+                </div>
+
+                <div className="figma-input-wrapper">
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as UserRole)}
+                    style={{
+                      width: '100%',
+                      height: '42px',
+                      padding: '0 14px',
+                      fontSize: '0.84rem',
+                      backgroundColor: '#0c1222',
+                      border: '1px solid #1e293b',
+                      borderRadius: '10px',
+                      color: '#ffffff',
+                      boxSizing: 'border-box'
+                    }}
+                  >
+                    <option value="QA_ENGINEER" style={{ background: '#0b132b', color: '#ffffff' }}>QA Engineer</option>
+                    <option value="QA_LEAD" style={{ background: '#0b132b', color: '#ffffff' }}>QA Lead</option>
+                    <option value="PRODUCT_OWNER" style={{ background: '#0b132b', color: '#ffffff' }}>Product Owner</option>
+                    <option value="SECURITY_AUDITOR" style={{ background: '#0b132b', color: '#ffffff' }}>Security Auditor</option>
+                    <option value="ADMIN" style={{ background: '#0b132b', color: '#ffffff' }}>Administrator</option>
+                  </select>
+                </div>
+              </>
+            )}
+
+            {/* Email Field */}
+            <div className="figma-input-wrapper">
+              <div className="figma-input-icon">
+                <Mail size={16} />
+              </div>
+              <input
+                type="email"
+                required
+                name="eval-auth-email"
+                autoComplete="off"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="Email"
+                className="figma-input"
+              />
+            </div>
+
+            {/* Password Field */}
+            <div className="figma-input-wrapper">
+              <div className="figma-input-icon">
+                <Lock size={16} />
+              </div>
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required
+                name="eval-auth-pass"
+                autoComplete="new-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Password"
+                className="figma-input"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+                style={{
+                  position: 'absolute',
+                  right: '14px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'color 0.15s ease'
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+                onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+              >
+                {showPassword ? <Eye size={16} /> : <EyeOff size={16} />}
+              </button>
+            </div>
+
+            {/* Sign In CTA */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="figma-primary-btn"
+              style={{ marginTop: '4px' }}
+            >
+              {loading ? (
+                <span>Authenticating...</span>
+              ) : (
+                <span>{tab === 'login' ? 'Sign In' : 'Create Account'}</span>
+              )}
+            </button>
+          </form>
+
+          {/* Quick Demo Switcher Pills */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '4px' }}>
+            <button
+              type="button"
+              onClick={() => handleQuickDemoLogin('admin@example.com', 'admin123')}
+              className="figma-demo-pill"
+            >
+              1-click enterprise demo
+            </button>
+            <button
+              type="button"
+              onClick={() => handleQuickDemoLogin('qa@example.com', 'qa123')}
+              className="figma-demo-pill"
+            >
+              Quick-switcher
+            </button>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  );
+};

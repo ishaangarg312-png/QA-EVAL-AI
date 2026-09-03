@@ -1,0 +1,16 @@
+[Unit]
+Description=EVAL AI Enterprise Agent QA Platform Service
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/opt/eval-ai-platform
+ExecStart=/opt/eval-ai-platform/venv/bin/uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=always
+RestartSec=3
+EnvironmentFile=/opt/eval-ai-platform/.env.local
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
