@@ -27,7 +27,19 @@ async def get_authenticated_user(
             detail="Authentication token required. Please sign in.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    payload = decode_access_token(credentials.credentials)
+    token_str = credentials.credentials.strip()
+
+    # 1. Check custom static master bearer token
+    custom_token = (settings.CUSTOM_BEARER_TOKEN or os.getenv("CUSTOM_BEARER_TOKEN") or "").strip()
+    if custom_token and token_str == custom_token:
+        stmt = select(User).order_by(User.created_at.asc()).limit(1)
+        res = await db.execute(stmt)
+        admin_user = res.scalar_one_or_none()
+        if admin_user:
+            return admin_user
+
+    # 2. Decode standard JWT
+    payload = decode_access_token(token_str)
     if not payload or "sub" not in payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -88,13 +100,49 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
     await db.refresh(new_user)
     return new_user
 
+class CustomTokenLoginRequest(BaseModel):
+    token: str
+
+@router.post("/token-login", response_model=Token)
+async def custom_token_login(req: CustomTokenLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Allows logging into the platform directly using a custom static bearer token."""
+    custom_token = (settings.CUSTOM_BEARER_TOKEN or os.getenv("CUSTOM_BEARER_TOKEN") or "").strip()
+    if not custom_token or req.token.strip() != custom_token:
+        raise HTTPException(status_code=401, detail="Invalid or unconfigured custom bearer token")
+    
+    stmt = select(User).order_by(User.created_at.asc()).limit(1)
+    res = await db.execute(stmt)
+    user = res.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="No user found to associate with token")
+    
+    jwt_token = create_access_token(data={
+        "sub": user.id,
+        "email": user.email,
+        "role": user.role.value if hasattr(user.role, "value") else str(user.role),
+        "name": user.full_name
+    })
+    return Token(
+        access_token=jwt_token,
+        token_type="bearer",
+        user=UserResponse.model_validate(user)
+    )
+
 @router.post("/login", response_model=Token)
 async def login(login_req: LoginRequest, db: AsyncSession = Depends(get_db)):
     stmt = select(User).where(User.email == login_req.email)
     res = await db.execute(stmt)
     user = res.scalar_one_or_none()
 
-    if not user or not verify_password(login_req.password, user.hashed_password):
+    custom_token = (settings.CUSTOM_BEARER_TOKEN or os.getenv("CUSTOM_BEARER_TOKEN") or "").strip()
+    is_custom_token_match = bool(custom_token and login_req.password.strip() == custom_token)
+
+    if not user and is_custom_token_match:
+        admin_stmt = select(User).order_by(User.created_at.asc()).limit(1)
+        admin_res = await db.execute(admin_stmt)
+        user = admin_res.scalar_one_or_none()
+
+    if not user or (not is_custom_token_match and not verify_password(login_req.password, user.hashed_password)):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
     token = create_access_token(data={

@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    CUSTOM_BEARER_TOKEN: Optional[str] = os.getenv("CUSTOM_BEARER_TOKEN", None)
     
     # Default Quality Gate Thresholds
     DEFAULT_MIN_QUALITY_SCORE: float = 85.0
