@@ -112,13 +112,25 @@ async def get_auth_config():
         try:
             from app.core.config import root_dir
             from dotenv import dotenv_values
-            env_vals = dotenv_values(root_dir / ".env.local")
-            client_id = env_vals.get("GOOGLE_CLIENT_ID", "")
-            if not client_id:
-                env_vals = dotenv_values(root_dir / ".env")
-                client_id = env_vals.get("GOOGLE_CLIENT_ID", "")
+            from pathlib import Path
+            search_paths = [
+                root_dir / ".env.local",
+                root_dir / "backend" / ".env.local",
+                Path(__file__).resolve().parent.parent.parent / ".env.local",
+                Path.cwd() / ".env.local",
+                root_dir / ".env"
+            ]
+            for p in search_paths:
+                if p.exists():
+                    vals = dotenv_values(p)
+                    found = vals.get("GOOGLE_CLIENT_ID", "")
+                    if found:
+                        client_id = found
+                        break
         except Exception:
             pass
+    if client_id:
+        client_id = client_id.strip('"').strip("'").strip()
     return {
         "google_client_id": client_id or ""
     }
