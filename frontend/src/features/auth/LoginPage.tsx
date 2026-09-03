@@ -114,19 +114,6 @@ export const LoginPage: React.FC = () => {
     }
   };
 
-  const handleQuickDemoLogin = async (demoEmail: string, demoPass: string) => {
-    setError(null);
-    setLoading(true);
-    try {
-      await login(demoEmail, demoPass);
-    } catch (err: any) {
-      const msg = err.response?.data?.detail || err.message || 'Demo login failed';
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <div className="figma-auth-container">
       {/* Background Mesh Grid */}
@@ -598,24 +585,6 @@ GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
               )}
             </button>
           </form>
-
-          {/* Quick Demo Switcher Pills */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', marginTop: '4px' }}>
-            <button
-              type="button"
-              onClick={() => handleQuickDemoLogin('admin@example.com', 'admin123')}
-              className="figma-demo-pill"
-            >
-              1-click enterprise demo
-            </button>
-            <button
-              type="button"
-              onClick={() => handleQuickDemoLogin('qa@example.com', 'qa123')}
-              className="figma-demo-pill"
-            >
-              Quick-switcher
-            </button>
-          </div>
 
         </div>
 
