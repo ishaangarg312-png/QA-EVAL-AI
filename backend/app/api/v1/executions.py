@@ -1954,36 +1954,41 @@ async def get_execution_swarm_messages(execution_id: str):
 
 
 # =========================================================================
-# Matrix Job Cancellation / Deletion (CRUD)
+# Matrix Job Cancellation / Deletion (CRUD) & Global Kill Switch
 # =========================================================================
 @router.post("/matrix-job/{job_id}/cancel")
 @router.delete("/matrix-job/{job_id}")
 async def cancel_matrix_job(job_id: str):
-    """Cancels and purges an interrupted or in-progress matrix execution job and all its queue tasks."""
+    """Cancels and immediately aborts an in-flight or queued matrix execution job and all its tasks."""
     if job_id in matrix_jobs:
+        matrix_jobs[job_id]["status"] = "CANCELLED"
+        matrix_jobs[job_id]["error"] = "Killed by user."
         del matrix_jobs[job_id]
     try:
-        async with AsyncSessionLocal() as session:
-            stmt = select(MatrixExecutionJob).where(MatrixExecutionJob.id == job_id)
-            res = await session.execute(stmt)
-            db_job = res.scalar_one_or_none()
-            if db_job:
-                db_job.status = "CANCELLED"
-                db_job.error = "Cancelled by user."
-            
-            # Cancel all tasks belonging to this job in the queue
-            await session.execute(
-                update(QueueTask)
-                .where(
-                    QueueTask.job_id == job_id,
-                    QueueTask.status.in_(["QUEUED", "RUNNING", "CLAIMED", "INTERRUPTED"])
-                )
-                .values(status="CANCELLED")
-            )
-            await session.commit()
+        from app.core.queue import TaskQueueEngine
+        cancelled_count = await TaskQueueEngine.cancel_job(job_id)
+        print(f"[Matrix Cancellation] Successfully aborted {cancelled_count} active coroutines for job {job_id}.")
     except Exception as e:
         print(f"Error cancelling matrix job: {e}")
     return {"job_id": job_id, "status": "CANCELLED"}
+
+
+@router.post("/cancel-all")
+@router.post("/matrix-jobs/cancel-all")
+async def cancel_all_executions():
+    """Immediately kills ALL running workflows, background coroutines, and queued tasks across the platform."""
+    try:
+        from app.core.queue import TaskQueueEngine
+        matrix_jobs.clear()
+        res = await TaskQueueEngine.cancel_all()
+        return {
+            "status": "CANCELLED",
+            "message": "All running flows, worker coroutines, and queue tasks have been killed.",
+            **res
+        }
+    except Exception as e:
+        print(f"Error executing cancel-all: {e}")
+        return {"status": "ERROR", "detail": str(e)}
 
 
 # =========================================================================

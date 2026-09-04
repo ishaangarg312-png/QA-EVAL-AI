@@ -1,7 +1,7 @@
 import asyncio
 import datetime
 from datetime import timezone
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Set
 from sqlalchemy import select, update, func, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
@@ -14,12 +14,117 @@ class TaskQueueEngine:
 
     _desired_concurrency: int = 2
     _claim_lock: Optional[asyncio.Lock] = None
+    _running_tasks: Dict[str, asyncio.Task] = {}
+    _task_to_job: Dict[str, str] = {}
+    _cancelled_jobs: Set[str] = set()
 
     @classmethod
     def _get_claim_lock(cls) -> asyncio.Lock:
         if cls._claim_lock is None:
             cls._claim_lock = asyncio.Lock()
         return cls._claim_lock
+
+    @classmethod
+    def register_active_task(cls, task_id: str, job_id: str, task_coro: asyncio.Task):
+        cls._running_tasks[task_id] = task_coro
+        cls._task_to_job[task_id] = job_id
+
+    @classmethod
+    def unregister_active_task(cls, task_id: str):
+        cls._running_tasks.pop(task_id, None)
+        cls._task_to_job.pop(task_id, None)
+
+    @classmethod
+    def is_job_cancelled(cls, job_id: str) -> bool:
+        return job_id in cls._cancelled_jobs
+
+    @classmethod
+    async def cancel_job(cls, job_id: str) -> int:
+        """Cancels all active and queued tasks for a given job and aborts in-flight tasks immediately."""
+        cls._cancelled_jobs.add(job_id)
+        cancelled_task_count = 0
+
+        # 1. Abort in-memory running asyncio tasks for this job
+        tasks_to_cancel = [
+            (t_id, task_coro)
+            for t_id, task_coro in list(cls._running_tasks.items())
+            if cls._task_to_job.get(t_id) == job_id
+        ]
+        for t_id, task_coro in tasks_to_cancel:
+            task_coro.cancel()
+            cls.unregister_active_task(t_id)
+            cancelled_task_count += 1
+
+        # 2. Update DB QueueTask and MatrixExecutionJob
+        async with AsyncSessionLocal() as session:
+            from app.models.execution import MatrixExecutionJob, ExecutionRun, ExecutionStatus
+            stmt = select(MatrixExecutionJob).where(MatrixExecutionJob.id == job_id)
+            res = await session.execute(stmt)
+            db_job = res.scalar_one_or_none()
+            if db_job:
+                db_job.status = "CANCELLED"
+                db_job.error = "Killed by user."
+
+            await session.execute(
+                update(QueueTask)
+                .where(
+                    QueueTask.job_id == job_id,
+                    QueueTask.status.in_(["QUEUED", "RUNNING", "CLAIMED", "INTERRUPTED"])
+                )
+                .values(status="CANCELLED", error="Killed by user")
+            )
+
+            job_suffix = job_id[-6:]
+            await session.execute(
+                update(ExecutionRun)
+                .where(
+                    ExecutionRun.correlation_id.like(f"corr-matrix-{job_suffix}-%"),
+                    ExecutionRun.status == ExecutionStatus.RUNNING
+                )
+                .values(status=ExecutionStatus.FAILED, quality_score=0.0)
+            )
+            await session.commit()
+
+        return cancelled_task_count
+
+    @classmethod
+    async def cancel_all(cls) -> Dict[str, Any]:
+        """Kills ALL running and queued flows and matrix jobs platform-wide."""
+        # 1. Abort all active running tasks in memory
+        cancelled_active = 0
+        for t_id, task_coro in list(cls._running_tasks.items()):
+            task_coro.cancel()
+            cancelled_active += 1
+        cls._running_tasks.clear()
+        cls._task_to_job.clear()
+
+        # 2. Update all active/interrupted/queued tasks and jobs in database
+        async with AsyncSessionLocal() as session:
+            from app.models.execution import MatrixExecutionJob, ExecutionRun, ExecutionStatus
+            # Mark matrix jobs
+            await session.execute(
+                update(MatrixExecutionJob)
+                .where(MatrixExecutionJob.status.in_(["RUNNING", "INTERRUPTED"]))
+                .values(status="CANCELLED", error="Execution killed by user.")
+            )
+            # Mark queue tasks
+            await session.execute(
+                update(QueueTask)
+                .where(QueueTask.status.in_(["QUEUED", "RUNNING", "CLAIMED", "INTERRUPTED"]))
+                .values(status="CANCELLED", error="Execution killed by user.")
+            )
+            # Mark running execution runs
+            await session.execute(
+                update(ExecutionRun)
+                .where(ExecutionRun.status == ExecutionStatus.RUNNING)
+                .values(status=ExecutionStatus.FAILED, quality_score=0.0)
+            )
+            await session.commit()
+
+        return {
+            "cancelled_active_coroutines": cancelled_active,
+            "status": "ALL_FLOWS_CANCELLED"
+        }
 
     @classmethod
     def get_desired_concurrency(cls) -> int:
@@ -97,7 +202,8 @@ class TaskQueueEngine:
                         .where(
                             and_(
                                 or_(
-                                    QueueTask.job_id == None,
+                                    QueueTask.job_id.is_(None),
+                                    MatrixExecutionJob.id.is_(None),
                                     MatrixExecutionJob.status == "RUNNING"
                                 ),
                                 or_(
@@ -105,7 +211,7 @@ class TaskQueueEngine:
                                     and_(
                                         QueueTask.status.in_(["CLAIMED", "RUNNING"]),
                                         or_(
-                                            QueueTask.heartbeat_at == None,
+                                            QueueTask.heartbeat_at.is_(None),
                                             QueueTask.heartbeat_at < stale_threshold
                                         )
                                     )

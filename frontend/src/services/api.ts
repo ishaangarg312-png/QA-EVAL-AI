@@ -473,6 +473,11 @@ export const api = {
     return res.data;
   },
 
+  cancelAllExecutions: async (): Promise<any> => {
+    const res = await apiClient.post('/executions/cancel-all');
+    return res.data;
+  },
+
   getProjectMatrixJobs: async (projectId: string): Promise<{ project_id: string; total: number; jobs: any[] }> => {
     const res = await apiClient.get<{ project_id: string; total: number; jobs: any[] }>(`/executions/projects/${projectId}/matrix-jobs`);
     return res.data;

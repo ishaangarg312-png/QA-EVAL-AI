@@ -37,22 +37,40 @@ from app.api.v1 import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize DB schemas
+    # Initialize DB schemas and apply additive migrations safely
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        try:
-            await conn.execute(text("ALTER TABLE projects ADD COLUMN report_template JSON DEFAULT '{}'"))
-        except Exception:
-            pass
-        try:
-            await conn.execute(text("ALTER TABLE async_operation_states ADD COLUMN project_id VARCHAR(64)"))
-        except Exception:
-            pass
-        try:
-            await conn.execute(text("ALTER TABLE swarm_messages ADD COLUMN project_id VARCHAR(64)"))
-        except Exception:
-            pass
-    logger.info("Database schemas initialized.")
+        for col_stmt in [
+            "ALTER TABLE projects ADD COLUMN report_template JSON DEFAULT '{}'",
+            "ALTER TABLE async_operation_states ADD COLUMN project_id VARCHAR(64)",
+            "ALTER TABLE swarm_messages ADD COLUMN project_id VARCHAR(64)",
+            "ALTER TABLE matrix_execution_jobs ADD COLUMN current_scenario_index INTEGER DEFAULT 0",
+            "ALTER TABLE matrix_execution_jobs ADD COLUMN current_scenario_title VARCHAR(255) DEFAULT ''",
+            "ALTER TABLE matrix_execution_jobs ADD COLUMN total_rows INTEGER DEFAULT 0",
+            "ALTER TABLE matrix_execution_jobs ADD COLUMN strategy JSON DEFAULT '{}'",
+            "ALTER TABLE matrix_execution_jobs ADD COLUMN nodes JSON DEFAULT '[]'",
+            "ALTER TABLE matrix_execution_jobs ADD COLUMN edges JSON DEFAULT '[]'",
+            "ALTER TABLE matrix_execution_jobs ADD COLUMN scenario_results JSON DEFAULT '[]'",
+            "ALTER TABLE matrix_execution_jobs ADD COLUMN payload_cache JSON DEFAULT '{}'",
+            "ALTER TABLE matrix_execution_jobs ADD COLUMN error TEXT",
+            "ALTER TABLE matrix_execution_jobs ADD COLUMN completed_at TIMESTAMP",
+            "ALTER TABLE queue_tasks ADD COLUMN project_id VARCHAR(64)",
+            "ALTER TABLE queue_tasks ADD COLUMN priority INTEGER DEFAULT 0",
+            "ALTER TABLE queue_tasks ADD COLUMN attempts INTEGER DEFAULT 0",
+            "ALTER TABLE queue_tasks ADD COLUMN max_retries INTEGER DEFAULT 3",
+            "ALTER TABLE queue_tasks ADD COLUMN leased_at TIMESTAMP",
+            "ALTER TABLE queue_tasks ADD COLUMN heartbeat_at TIMESTAMP",
+            "ALTER TABLE queue_tasks ADD COLUMN worker_id VARCHAR(128)",
+            "ALTER TABLE queue_tasks ADD COLUMN error TEXT",
+            "ALTER TABLE queue_tasks ADD COLUMN result JSON",
+            "ALTER TABLE queue_tasks ADD COLUMN duration_ms FLOAT",
+            "ALTER TABLE queue_tasks ADD COLUMN completed_at TIMESTAMP",
+        ]:
+            try:
+                await conn.execute(text(col_stmt))
+            except Exception:
+                pass
+    logger.info("Database schemas initialized and migrated.")
 
     # Crash recovery: Detect and checkpoint any jobs that were interrupted by server restart/crash
     try:
@@ -116,9 +134,12 @@ async def lifespan(app: FastAPI):
             )
             dur = round((time.perf_counter() - st) * 1000.0, 2)
             await TaskQueueEngine.complete_task(t_id, worker_id, r, duration_ms=dur)
+        except asyncio.CancelledError:
+            await TaskQueueEngine.fail_task(t_id, worker_id, "Killed by user.", can_retry=False)
         except Exception as ex:
             await TaskQueueEngine.fail_task(t_id, worker_id, str(ex), can_retry=True)
         finally:
+            TaskQueueEngine.unregister_active_task(t_id)
             hb_stop.set()
             hb_task.cancel()
 
@@ -144,17 +165,18 @@ async def lifespan(app: FastAPI):
 
                 # Claim up to available slots
                 available_slots = desired - len(active_tasks_set)
-                if available_slots > 0 and stats.get("queued", 0) > 0:
+                if available_slots > 0:
                     for _ in range(available_slots):
                         task = await TaskQueueEngine.claim_next_task(worker_id)
                         if not task:
                             break
                         task_coro = asyncio.create_task(_run_single_task(task, worker_id))
+                        TaskQueueEngine.register_active_task(task["id"], task.get("job_id", ""), task_coro)
                         active_tasks_set.add(task_coro)
                         task_coro.add_done_callback(active_tasks_set.discard)
 
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"[Embedded Worker Exception] {e}")
             await asyncio.sleep(1.0)
 
     queue_worker_task = asyncio.create_task(_embedded_queue_worker())

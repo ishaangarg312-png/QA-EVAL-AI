@@ -49,7 +49,8 @@ import {
   GripVertical,
   AlertTriangle,
   RotateCcw,
-  Trash2
+  Trash2,
+  Square
 } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -850,6 +851,32 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleCancelAllFlows = async () => {
+    try {
+      showToast('🛑 Killing all running flows & worker tasks...');
+      if (pollingIntervalRef.current) {
+        clearTimeout(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+      const currentJobId = activeMatrixJob?.job_id || activeMatrixJob?.id;
+      if (currentJobId) {
+        await api.cancelMatrixJob(currentJobId).catch(() => null);
+      }
+      await api.cancelAllExecutions();
+      setActiveMatrixJob(null);
+      localStorage.removeItem('active_matrix_job_id');
+      setIsMatrixModalOpen(false);
+      showToast('🛑 All running flows and tasks killed.');
+      if (currentProject) {
+        const execs = await api.getExecutions(currentProject.id).catch(() => []);
+        setExecutions(execs);
+      }
+    } catch (e: any) {
+      console.error('Failed to cancel all executions:', e);
+      showToast(`⚠️ Error cancelling flows: ${e.message || 'Error'}`);
+    }
+  };
+
   const handleDismissJob = (_jobId: string) => {
     setIsFloatingPillDismissed(true);
     showToast('Notification minimized. You can access or resume this execution anytime in Swarm & Async Hub or the top bar.');
@@ -1065,6 +1092,7 @@ export const App: React.FC = () => {
                 setIsMatrixModalOpen(true);
               }}
               onCancelMatrixJob={handleCancelMatrixJob}
+              onCancelAllFlows={handleCancelAllFlows}
             />
           )}
 
@@ -1297,17 +1325,33 @@ export const App: React.FC = () => {
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsMatrixModalOpen(true);
-              }}
-              style={{ backgroundColor: '#2563eb' }}
-              className="px-3.5 py-2 rounded-xl hover:bg-blue-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ml-1"
-            >
-              <span>View Progress</span>
-            </button>
+            <div className="flex items-center gap-1.5 ml-1 shrink-0">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsMatrixModalOpen(true);
+                }}
+                style={{ backgroundColor: '#2563eb' }}
+                className="px-3.5 py-2 rounded-xl hover:bg-blue-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+              >
+                <span>View Progress</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (window.confirm('Kill running flow and cancel all tasks immediately?')) {
+                    handleCancelAllFlows();
+                  }
+                }}
+                className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                title="Immediately kill running flow and all tasks"
+              >
+                <Square className="w-3.5 h-3.5 fill-current" />
+                <span>Cancel All</span>
+              </button>
+            </div>
           )}
 
           {/* Dismiss / Close Button */}
@@ -1389,18 +1433,36 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
-              <button
-                onClick={() => setIsMatrixModalOpen(false)}
-                title={activeMatrixJob.status === 'RUNNING' ? 'Minimize to Background' : 'Close dialog'}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer flex items-center gap-2"
-              >
+              <div className="flex items-center gap-2">
                 {activeMatrixJob.status === 'RUNNING' && (
-                  <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-lg">
-                    Run in Background ▾
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to stop and kill this running flow?')) {
+                        handleCancelAllFlows();
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5"
+                    title="Kill running flow and cancel all tasks"
+                  >
+                    <Square className="w-3.5 h-3.5 fill-current" />
+                    <span>Cancel All</span>
+                  </button>
                 )}
-                <X className="w-5 h-5" />
-              </button>
+
+                <button
+                  onClick={() => setIsMatrixModalOpen(false)}
+                  title={activeMatrixJob.status === 'RUNNING' ? 'Minimize to Background' : 'Close dialog'}
+                  className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer flex items-center gap-2"
+                >
+                  {activeMatrixJob.status === 'RUNNING' && (
+                    <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-0.5 rounded-lg">
+                      Run in Background ▾
+                    </span>
+                  )}
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             {/* Scenarios Execution Live Stepper List (Scrollable Body) */}
@@ -1686,6 +1748,20 @@ export const App: React.FC = () => {
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>View in Result Capture & Traces ➜</span>
+                  </button>
+                )}
+                {activeMatrixJob.status === 'RUNNING' && (
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to stop and kill all running flows?')) {
+                        handleCancelAllFlows();
+                      }
+                    }}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs cursor-pointer transition-all"
+                    title="Kill running flow and cancel all tasks"
+                  >
+                    <Square className="w-3.5 h-3.5 fill-current" />
+                    <span>Cancel All Flow</span>
                   </button>
                 )}
                 <button

@@ -15,7 +15,8 @@ import {
   Layers,
   Sparkles,
   X,
-  ExternalLink
+  ExternalLink,
+  Square
 } from 'lucide-react';
 import { api } from '../../services/api';
 import { Project, SwarmMessage } from '../../types';
@@ -29,6 +30,7 @@ interface SwarmAsyncHubViewProps {
   onDismissMatrixJob: (jobId: string) => void;
   onOpenMatrixModal?: (jobId: string) => void;
   onCancelMatrixJob?: (jobId: string) => void;
+  onCancelAllFlows?: () => void;
 }
 
 export const SwarmAsyncHubView: React.FC<SwarmAsyncHubViewProps> = ({
@@ -38,7 +40,8 @@ export const SwarmAsyncHubView: React.FC<SwarmAsyncHubViewProps> = ({
   onRetryMatrixJob,
   onDismissMatrixJob,
   onOpenMatrixModal,
-  onCancelMatrixJob
+  onCancelMatrixJob,
+  onCancelAllFlows
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'async_ops' | 'swarm_contracts'>('async_ops');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -193,6 +196,17 @@ export const SwarmAsyncHubView: React.FC<SwarmAsyncHubViewProps> = ({
     (j) => j.status === 'INTERRUPTED' && (!j.project_id || (currentProject && j.project_id === currentProject.id))
   );
 
+  const runningJobs = matrixJobs.filter(
+    (j) => j.status === 'RUNNING' && (!j.project_id || (currentProject && j.project_id === currentProject.id))
+  );
+  if (
+    activeMatrixJob &&
+    activeMatrixJob.status === 'RUNNING' &&
+    !runningJobs.some((j) => (j.id || j.job_id) === (activeMatrixJob.id || activeMatrixJob.job_id))
+  ) {
+    runningJobs.push(activeMatrixJob);
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12 animate-in fade-in duration-200">
       {/* Header Banner */}
@@ -326,6 +340,104 @@ export const SwarmAsyncHubView: React.FC<SwarmAsyncHubViewProps> = ({
       {/* ========================================================================= */}
       {activeSubTab === 'async_ops' && (
         <div className="space-y-6">
+          {/* Global Kill Switch Banner if any flows are running or interrupted */}
+          {(runningJobs.length > 0 || interruptedJobs.length > 0) && (
+            <div className="p-4 rounded-2xl bg-slate-900 text-white flex items-center justify-between gap-4 shadow-md">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center text-rose-400 font-bold border border-slate-700">
+                  <Square className="w-4 h-4 fill-current" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Active Background Workflow Oversight</h4>
+                  <p className="text-xs text-slate-400">
+                    {runningJobs.length} flow(s) running, {interruptedJobs.length} interrupted flow(s) detected.
+                  </p>
+                </div>
+              </div>
+
+              {onCancelAllFlows && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Kill all running flows and abort background worker tasks immediately?')) {
+                      onCancelAllFlows();
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <span>Cancel All Flows</span>
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Live Running Matrix Executions */}
+          {runningJobs.length > 0 && (
+            <div className="space-y-3">
+              {runningJobs.map((job) => (
+                <div
+                  key={job.id || job.job_id}
+                  className="p-5 rounded-2xl bg-indigo-50/70 border border-indigo-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in"
+                >
+                  <div className="flex items-start gap-3.5">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 mt-0.5 font-bold shadow-xs animate-pulse">
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <h3 className="text-sm font-bold text-indigo-950">
+                          Matrix Workflow Execution In Progress
+                        </h3>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                          {job.completed_scenarios || 0} of {job.total_scenarios || 0} Scenarios Done
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                          IN FLIGHT
+                        </span>
+                      </div>
+                      <p className="text-xs text-indigo-800">
+                        {job.current_scenario_title || 'Executing DAG scenario nodes in distributed background queue...'}
+                      </p>
+                      <p className="text-[11px] text-indigo-700 font-mono mt-1">
+                        Job ID: {job.id || job.job_id} • Dataset: <strong>{job.dataset_name || 'Standard Matrix'}</strong>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    {onOpenMatrixModal && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenMatrixModal(job.id || job.job_id)}
+                        className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>View Live Stepper</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Kill this running workflow execution immediately?')) {
+                          if (onCancelMatrixJob) {
+                            onCancelMatrixJob(job.id || job.job_id);
+                          }
+                        }
+                      }}
+                      className="px-3.5 py-2 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                      title="Kill running flow"
+                    >
+                      <Square className="w-3.5 h-3.5 fill-current" />
+                      <span>Cancel Flow</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Active / Interrupted Matrix Executions Card List */}
           {interruptedJobs.length > 0 && (
             <div className="space-y-3">
