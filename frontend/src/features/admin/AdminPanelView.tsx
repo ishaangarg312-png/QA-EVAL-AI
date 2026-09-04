@@ -238,22 +238,22 @@ export const AdminPanelView: React.FC = () => {
         </div>
       )}
 
-      {/* Header Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-linear-to-r from-purple-950 via-slate-900 to-indigo-950 border border-purple-800/40 p-6 text-white shadow-xl">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1.5">
+      {/* Header Banner - High Contrast Enterprise Theme */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
             <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300">
+              <div className="w-9 h-9 rounded-2xl bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-700">
                 <ShieldAlert className="w-5 h-5" />
               </div>
-              <h1 className="text-xl font-extrabold tracking-tight font-display">
+              <h1 className="text-xl font-extrabold tracking-tight font-display text-slate-900">
                 Admin & Platform Control Center
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-100 text-purple-700 border border-purple-200">
                 RBAC PROTECTED
               </span>
             </div>
-            <p className="text-xs text-purple-200/80 max-w-2xl">
+            <p className="text-xs text-slate-500 max-w-2xl">
               Real-time user authorization management, live AWS infrastructure monitoring, and dynamic API circuit breakers.
             </p>
           </div>
@@ -266,7 +266,7 @@ export const AdminPanelView: React.FC = () => {
                 loadKillSwitches();
                 showToast('Telemetry refreshed');
               }}
-              className="px-3.5 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 text-xs font-semibold text-slate-200 transition-all flex items-center gap-2 cursor-pointer"
+              className="px-3.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 border border-slate-200 text-xs font-bold text-slate-700 transition-all flex items-center gap-2 cursor-pointer"
               title="Refresh all metrics"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoadingMetrics ? 'animate-spin' : ''}`} />
@@ -276,7 +276,7 @@ export const AdminPanelView: React.FC = () => {
             <button
               onClick={handleEmergencyHalt}
               disabled={isEmergencyHalting}
-              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950/50 transition-all flex items-center gap-2 cursor-pointer active:scale-95 border border-rose-500/50"
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-xs transition-all flex items-center gap-2 cursor-pointer active:scale-95"
               title="Emergency halt all APIs"
             >
               <Power className="w-3.5 h-3.5 fill-current" />
@@ -286,46 +286,46 @@ export const AdminPanelView: React.FC = () => {
         </div>
 
         {/* Quick Stats Strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-5 border-t border-purple-800/30">
-          <div className="bg-slate-900/60 rounded-2xl p-3 border border-purple-900/40">
-            <div className="flex items-center justify-between text-slate-400 text-[11px] mb-1">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-slate-100">
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+            <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">
               <span>Active Users Now</span>
-              <Radio className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
             </div>
-            <div className="text-xl font-extrabold text-white">
-              {userStats.online} <span className="text-xs font-normal text-slate-400">/ {userStats.total} registered</span>
+            <div className="text-2xl font-extrabold text-slate-900">
+              {userStats.online} <span className="text-xs font-normal text-slate-500">/ {userStats.total} registered</span>
             </div>
           </div>
 
-          <div className="bg-slate-900/60 rounded-2xl p-3 border border-purple-900/40">
-            <div className="flex items-center justify-between text-slate-400 text-[11px] mb-1">
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+            <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">
               <span>Administrators</span>
-              <ShieldCheck className="w-3.5 h-3.5 text-purple-400" />
+              <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
             </div>
-            <div className="text-xl font-extrabold text-purple-300">
-              {userStats.admins} <span className="text-xs font-normal text-slate-400">admins</span>
+            <div className="text-2xl font-extrabold text-purple-700">
+              {userStats.admins} <span className="text-xs font-normal text-slate-500">admins</span>
             </div>
           </div>
 
-          <div className="bg-slate-900/60 rounded-2xl p-3 border border-purple-900/40">
-            <div className="flex items-center justify-between text-slate-400 text-[11px] mb-1">
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+            <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">
               <span>CPU / System Load</span>
-              <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+              <Cpu className="w-3.5 h-3.5 text-indigo-600" />
             </div>
-            <div className="text-xl font-extrabold text-indigo-300">
+            <div className="text-2xl font-extrabold text-indigo-600">
               {metrics ? `${metrics.cpu.usage_percent}%` : '--'}
-              <span className="text-xs font-normal text-slate-400 ml-1.5">
+              <span className="text-xs font-normal text-slate-500 ml-1.5">
                 {metrics ? `${metrics.cpu.load_avg_1m} load` : ''}
               </span>
             </div>
           </div>
 
-          <div className="bg-slate-900/60 rounded-2xl p-3 border border-purple-900/40">
-            <div className="flex items-center justify-between text-slate-400 text-[11px] mb-1">
+          <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200">
+            <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">
               <span>API Circuit Breakers</span>
-              <Zap className={`w-3.5 h-3.5 ${activeKillSwitchesCount > 0 ? 'text-rose-400' : 'text-emerald-400'}`} />
+              <Zap className={`w-3.5 h-3.5 ${activeKillSwitchesCount > 0 ? 'text-rose-500' : 'text-emerald-500'}`} />
             </div>
-            <div className={`text-xl font-extrabold ${activeKillSwitchesCount > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+            <div className={`text-2xl font-extrabold ${activeKillSwitchesCount > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
               {activeKillSwitchesCount > 0 ? `${activeKillSwitchesCount} Killed` : 'All Active'}
             </div>
           </div>
@@ -349,11 +349,11 @@ export const AdminPanelView: React.FC = () => {
                 onClick={() => setActiveSubTab(tab.id as any)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-purple-950 text-white shadow-sm'
+                    ? 'bg-slate-900 text-white shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
               >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-purple-300' : 'text-slate-400'}`} />
+                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-indigo-400' : 'text-slate-500'}`} />
                 <span>{tab.label}</span>
               </button>
             );
@@ -624,14 +624,15 @@ export const AdminPanelView: React.FC = () => {
 
             {/* Filter and Search */}
             <div className="flex items-center gap-2.5 flex-wrap">
-              <div className="relative">
-                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <div className="relative flex items-center">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 pointer-events-none" />
                 <input
                   type="text"
                   placeholder="Search user or email..."
                   value={userSearch}
                   onChange={(e) => setUserSearch(e.target.value)}
-                  className="pl-8 pr-3 py-1.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all w-52"
+                  style={{ paddingLeft: '34px', paddingRight: '12px' }}
+                  className="w-56 bg-slate-50 border border-slate-200 rounded-xl py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition-all shadow-2xs"
                 />
               </div>
 
