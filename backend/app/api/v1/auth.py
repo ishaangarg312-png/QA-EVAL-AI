@@ -168,7 +168,7 @@ async def send_otp(payload: SendOtpRequest, db: AsyncSession = Depends(get_db)):
         )
 
 
-@router.post("/register", response_model=UserResponse)
+@router.post("/register", response_model=Token)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
     from app.core.kill_switch import SystemKillSwitchManager
     if not SystemKillSwitchManager.is_allowed("user_registration"):
@@ -249,7 +249,33 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
     db.add(new_user)
     await db.commit()
     await db.refresh(new_user)
-    return new_user
+
+    try:
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc)
+        new_user.last_login_at = now_utc
+        new_user.last_active_at = now_utc
+        await db.commit()
+    except Exception:
+        pass
+
+    jwt_token = create_access_token(data={
+        "sub": new_user.id,
+        "email": new_user.email,
+        "role": new_user.role.value if hasattr(new_user.role, "value") else str(new_user.role),
+        "name": new_user.full_name
+    })
+
+    return Token(
+        access_token=jwt_token,
+        token_type="bearer",
+        user_id=new_user.id,
+        id=new_user.id,
+        email=new_user.email,
+        full_name=new_user.full_name,
+        role=new_user.role,
+        organization_id=new_user.organization_id
+    )
 
 class CustomTokenLoginRequest(BaseModel):
     token: str

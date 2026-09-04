@@ -6,6 +6,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user_id: str
+    id: Optional[str] = None
     email: str
     full_name: Optional[str] = None
     role: UserRole

@@ -10,7 +10,7 @@ interface AuthContextType {
   googleClientId: string | null;
   login: (email: string, password: string, otp?: string) => Promise<TokenResponse>;
   loginWithGoogle: (idToken: string) => Promise<TokenResponse>;
-  register: (data: { email: string; full_name: string; password: string; role?: string; otp?: string }) => Promise<User>;
+  register: (data: { email: string; full_name: string; password: string; role?: string; otp?: string }) => Promise<TokenResponse | User>;
   logout: () => void;
   refreshUser: () => Promise<void>;
 }
@@ -115,8 +115,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return res;
   };
 
-  const register = async (data: { email: string; full_name: string; password: string; role?: string; otp?: string }): Promise<User> => {
+  const register = async (data: { email: string; full_name: string; password: string; role?: string; otp?: string }): Promise<TokenResponse | User> => {
     const res = await api.register(data);
+    if (res && (res as TokenResponse).access_token) {
+      const tokenRes = res as TokenResponse;
+      setToken(tokenRes.access_token);
+      localStorage.setItem('auth_token', tokenRes.access_token);
+      const userProfile: User = {
+        id: tokenRes.user_id || (tokenRes as any).id,
+        email: tokenRes.email,
+        full_name: tokenRes.full_name || data.full_name || tokenRes.email.split('@')[0],
+        role: tokenRes.role,
+        organization_id: tokenRes.organization_id
+      };
+      setUser(userProfile);
+      localStorage.setItem('auth_user', JSON.stringify(userProfile));
+    }
     return res;
   };
 

@@ -88,7 +88,7 @@ export const LoginPage: React.FC = () => {
           shape: 'rectangular',
           text: 'signin_with',
           logo_alignment: 'left',
-          width: 338,
+          width: 368,
         });
       }
     };
@@ -142,6 +142,7 @@ export const LoginPage: React.FC = () => {
       setOtpCooldown(res.cooldown_seconds || 30);
       setSuccessMsg(res.message || `Verification code sent to ${emailClean}! Check your inbox.`);
     } catch (err: any) {
+      setSuccessMsg(null);
       const msg = err.response?.data?.detail || err.message || 'Failed to send OTP';
       setError(msg);
     } finally {
@@ -199,10 +200,12 @@ export const LoginPage: React.FC = () => {
 
     if (tab === 'register') {
       if (!ALLOWED_SIGNUP_EMAILS.includes(emailClean)) {
+        setSuccessMsg(null);
         setError('Website in development. Coming soon');
         return;
       }
       if (!otp.trim()) {
+        setSuccessMsg(null);
         setError('Please enter the 6-digit verification code sent to your email.');
         return;
       }
@@ -215,11 +218,16 @@ export const LoginPage: React.FC = () => {
           role,
           otp: otp.trim(),
         });
+        setError(null);
         setSuccessMsg('Account created successfully! Logging you in...');
-        await login(emailClean, password, otp.trim());
       } catch (err: any) {
+        setSuccessMsg(null);
         const msg = err.response?.data?.detail || err.message || 'Authentication failed';
-        setError(msg);
+        if (msg.toLowerCase().includes('already registered')) {
+          setError('This email is already registered. Please click "Back to Sign In" above to log in.');
+        } else {
+          setError(msg);
+        }
       } finally {
         setLoading(false);
       }
@@ -233,6 +241,7 @@ export const LoginPage: React.FC = () => {
           await handleSendOtp('login');
           return;
         } else {
+          setSuccessMsg(null);
           setError('Please enter the 6-digit verification code sent to your email.');
           return;
         }
@@ -242,6 +251,7 @@ export const LoginPage: React.FC = () => {
       try {
         await login(emailClean, password, otp.trim());
       } catch (err: any) {
+        setSuccessMsg(null);
         const msg = err.response?.data?.detail || err.message || 'Authentication failed';
         setError(msg);
       } finally {
@@ -574,7 +584,7 @@ export const LoginPage: React.FC = () => {
 
             {/* Email Field with Send/Resend OTP Button */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <div className="figma-input-wrapper" style={{ flex: 1 }}>
+              <div className="figma-input-wrapper" style={{ flex: 1, minWidth: 0 }}>
                 <div className="figma-input-icon">
                   <Mail size={16} />
                 </div>
@@ -595,13 +605,14 @@ export const LoginPage: React.FC = () => {
                 disabled={otpSending || otpCooldown > 0}
                 style={{
                   height: '42px',
-                  padding: '0 14px',
+                  padding: '0 12px',
+                  flexShrink: 0,
                   background: otpCooldown > 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(99, 102, 241, 0.2)',
                   border: '1px solid',
                   borderColor: otpCooldown > 0 ? 'rgba(255, 255, 255, 0.1)' : 'rgba(99, 102, 241, 0.4)',
                   borderRadius: '10px',
                   color: otpCooldown > 0 ? '#94a3b8' : '#c7d2fe',
-                  fontSize: '12px',
+                  fontSize: '11px',
                   fontWeight: 600,
                   cursor: otpSending || otpCooldown > 0 ? 'not-allowed' : 'pointer',
                   whiteSpace: 'nowrap',
@@ -650,7 +661,7 @@ export const LoginPage: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder={tab === 'forgot' ? 'New Password (min. 6 chars)' : 'Password'}
-                className="figma-input"
+                className="figma-input figma-input-with-end-icon"
               />
               <button
                 type="button"
@@ -690,7 +701,7 @@ export const LoginPage: React.FC = () => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirm New Password"
-                  className="figma-input"
+                  className="figma-input figma-input-with-end-icon"
                 />
                 <button
                   type="button"

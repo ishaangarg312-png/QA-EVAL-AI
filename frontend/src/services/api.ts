@@ -89,8 +89,8 @@ export const api = {
     return res.data;
   },
 
-  register: async (data: { email: string; full_name: string; password: string; role?: string; otp?: string }): Promise<User> => {
-    const res = await apiClient.post<User>('/auth/register', data);
+  register: async (data: { email: string; full_name: string; password: string; role?: string; otp?: string }): Promise<TokenResponse> => {
+    const res = await apiClient.post<TokenResponse>('/auth/register', data);
     return res.data;
   },
 
