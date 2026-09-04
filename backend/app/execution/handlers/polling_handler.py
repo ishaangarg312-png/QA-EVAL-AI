@@ -65,6 +65,11 @@ class PollingHandler:
         # Reuse single HTTP client session to preserve TCP connections across polls
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0, connect=15.0)) as client:
             for attempt in range(1, max_attempts + 1):
+                from app.core.kill_switch import SystemKillSwitchManager
+                from app.core.queue import TaskQueueEngine
+                if not SystemKillSwitchManager.is_allowed("flow_execution") or (matrix_job_id and TaskQueueEngine.is_job_cancelled(matrix_job_id)):
+                    raise asyncio.CancelledError("Polling aborted by administrator (Kill Switch Active).")
+
                 attempts = attempt
                 
                 # Check elapsed time against timeout
@@ -189,9 +194,13 @@ class PollingHandler:
                         "idempotency_key": idem_key
                     }
 
-                # 3. Wait before next polling attempt (respect full interval)
+                # 3. Wait before next polling attempt (responsive cancellation)
                 if attempt < max_attempts and (time.perf_counter() - start + interval) <= timeout_limit:
-                    await asyncio.sleep(interval)
+                    steps = int(interval / 0.5)
+                    for _ in range(max(1, steps)):
+                        if not SystemKillSwitchManager.is_allowed("flow_execution") or (matrix_job_id and TaskQueueEngine.is_job_cancelled(matrix_job_id)):
+                            raise asyncio.CancelledError("Polling aborted by administrator (Kill Switch Active).")
+                        await asyncio.sleep(min(0.5, interval))
 
         duration_ms = (time.perf_counter() - start) * 1000
         duration_s = duration_ms / 1000.0

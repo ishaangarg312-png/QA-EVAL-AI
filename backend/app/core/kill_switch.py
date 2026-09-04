@@ -104,7 +104,7 @@ class SystemKillSwitchManager:
         return list(cls._cache.values())
 
     @classmethod
-    async def set_switch(cls, feature_key: str, is_enabled: bool, reason: Optional[str] = None, updated_by: str = "admin") -> Dict[str, Any]:
+    async def set_switch(cls, feature_key: str, is_enabled: bool, reason: Optional[str] = None, updated_by: str = "admin", cascade_cancel: bool = True) -> Dict[str, Any]:
         async with cls._lock:
             now = datetime.datetime.now(timezone.utc)
             val_str = "true" if is_enabled else "false"
@@ -146,17 +146,26 @@ class SystemKillSwitchManager:
                 "updated_by": updated_by,
                 "updated_at": now.isoformat()
             }
-            return cls._cache[feature_key]
+
+        # Proactively abort all running tasks and in-flight flows when execution switch is killed
+        if cascade_cancel and (feature_key in ("flow_execution", "queue_processing")) and not is_enabled:
+            try:
+                from app.core.queue import TaskQueueEngine
+                await TaskQueueEngine.cancel_all(reason=f"Killed by administrator ({updated_by}) via kill switch '{feature_key}'.")
+            except Exception as kill_err:
+                print(f"Error cancelling tasks on kill switch set: {kill_err}")
+
+        return cls._cache[feature_key]
 
     @classmethod
     async def emergency_halt(cls, updated_by: str = "admin", reason: str = "Emergency halt initiated by administrator.") -> Dict[str, Any]:
         """Immediately disables flow execution, disables queue processing, and kills all in-flight jobs."""
         from app.core.queue import TaskQueueEngine
-        # 1. Disable execution switches
-        await cls.set_switch("flow_execution", False, reason=reason, updated_by=updated_by)
-        await cls.set_switch("queue_processing", False, reason=reason, updated_by=updated_by)
+        # 1. Disable execution switches without redundant cascade
+        await cls.set_switch("flow_execution", False, reason=reason, updated_by=updated_by, cascade_cancel=False)
+        await cls.set_switch("queue_processing", False, reason=reason, updated_by=updated_by, cascade_cancel=False)
         # 2. Cancel all in-flight tasks and jobs
-        cancel_res = await TaskQueueEngine.cancel_all()
+        cancel_res = await TaskQueueEngine.cancel_all(reason=f"Emergency platform halt by {updated_by}: {reason}")
         return {
             "status": "EMERGENCY_HALT_ACTIVE",
             "message": "All execution pipelines disabled and all active coroutines aborted.",

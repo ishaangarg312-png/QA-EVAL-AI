@@ -166,15 +166,20 @@ async def execute_single_scenario(
     await _checkpoint_scenario_state("RUNNING")
 
     from app.core.queue import TaskQueueEngine
-    if TaskQueueEngine.is_job_cancelled(job_id):
+    from app.core.kill_switch import SystemKillSwitchManager
+    if TaskQueueEngine.is_job_cancelled(job_id) or not SystemKillSwitchManager.is_allowed("flow_execution"):
         scenario["status"] = "CANCELLED"
+        for nr_item in scenario.get("nodeResults", []):
+            nr_item["status"] = "CANCELLED"
+            nr_item["statusCode"] = 499
+            nr_item["error"] = "Killed by administrator (Kill Switch Active)."
         await _checkpoint_scenario_state("CANCELLED")
-        raise asyncio.CancelledError(f"Job {job_id} cancelled by user")
+        raise asyncio.CancelledError(f"Job {job_id} cancelled by administrator (Kill Switch Active)")
 
     try:
         for wave in waves:
-            if TaskQueueEngine.is_job_cancelled(job_id):
-                raise asyncio.CancelledError(f"Job {job_id} cancelled by user")
+            if TaskQueueEngine.is_job_cancelled(job_id) or not SystemKillSwitchManager.is_allowed("flow_execution"):
+                raise asyncio.CancelledError(f"Job {job_id} cancelled by administrator (Kill Switch Active)")
 
             # Mark all active nodes in current wave as RUNNING simultaneously so UI shows all parallel nodes running
             for node in wave:
@@ -186,8 +191,8 @@ async def execute_single_scenario(
 
             async def _execute_matrix_node(node: Dict[str, Any]):
                 nonlocal step_order_counter, scenario_total_ms, has_error
-                if TaskQueueEngine.is_job_cancelled(job_id):
-                    raise asyncio.CancelledError(f"Job {job_id} cancelled by user")
+                if TaskQueueEngine.is_job_cancelled(job_id) or not SystemKillSwitchManager.is_allowed("flow_execution"):
+                    raise asyncio.CancelledError(f"Job {job_id} cancelled by administrator (Kill Switch Active)")
 
                 node_key = node.get("node_key")
                 n_type = (node.get("node_type") or "API_REQUEST").upper()
@@ -251,8 +256,8 @@ async def execute_single_scenario(
                         turn_dur_sum = 0.0
 
                         for t_idx, turn_data in enumerate(turns):
-                            if TaskQueueEngine.is_job_cancelled(job_id):
-                                raise asyncio.CancelledError(f"Job {job_id} cancelled by user")
+                            if TaskQueueEngine.is_job_cancelled(job_id) or not SystemKillSwitchManager.is_allowed("flow_execution"):
+                                raise asyncio.CancelledError(f"Job {job_id} cancelled by administrator (Kill Switch Active)")
                             step_order_counter += 1
                             for tk, tv in turn_data.items():
                                 active_session_vars[tk] = tv
@@ -462,7 +467,7 @@ async def execute_single_scenario(
                     nr["status"] = "CANCELLED"
                     nr["statusCode"] = 499
                     nr["durationMs"] = round((time.perf_counter() - start) * 1000.0, 2)
-                    nr["error"] = "Cancelled by user."
+                    nr["error"] = "Killed by administrator (Kill Switch Active)."
                     raise
                 except Exception as ex:
                     has_error = True
@@ -477,6 +482,11 @@ async def execute_single_scenario(
 
     except asyncio.CancelledError:
         scenario["status"] = "CANCELLED"
+        for nr_item in scenario.get("nodeResults", []):
+            if nr_item.get("status") in ("RUNNING", "PENDING"):
+                nr_item["status"] = "CANCELLED"
+                nr_item["statusCode"] = 499
+                nr_item["error"] = "Killed by administrator (Kill Switch Active)."
         await _checkpoint_scenario_state("CANCELLED")
         if run_id:
             async with _matrix_runner_lock:

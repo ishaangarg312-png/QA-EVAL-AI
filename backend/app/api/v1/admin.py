@@ -185,6 +185,15 @@ async def toggle_kill_switch(
         reason=req.reason,
         updated_by=admin.email
     )
+    if (feature_key in ("flow_execution", "queue_processing")) and not req.is_enabled:
+        from app.core.queue import TaskQueueEngine
+        try:
+            from app.api.v1.executions import matrix_jobs
+            matrix_jobs.clear()
+        except Exception:
+            pass
+        await TaskQueueEngine.cancel_all(reason=f"Killed by administrator ({admin.email}) via circuit breaker '{feature_key}'.")
+
     action_str = "enabled" if req.is_enabled else "disabled"
     return {
         "feature_key": feature_key,
@@ -205,3 +214,4 @@ async def trigger_emergency_kill(
         reason=req.reason or "Emergency platform kill switch triggered."
     )
     return result
+

@@ -578,6 +578,16 @@ export const App: React.FC = () => {
             }).catch(() => {});
           }
           return;
+        } else if (statusData.status === 'CANCELLED') {
+          isStopped = true;
+          if (pollingIntervalRef.current) {
+            clearTimeout(pollingIntervalRef.current);
+            pollingIntervalRef.current = null;
+          }
+          localStorage.removeItem('active_matrix_job_id');
+          setActiveMatrixJob(statusData);
+          showToast(`🛑 Matrix execution killed: ${statusData.error || 'Stopped by administrator (Kill Switch Active)'}`);
+          return;
         } else if (statusData.status === 'INTERRUPTED') {
           isStopped = true;
           if (pollingIntervalRef.current) {
@@ -622,7 +632,7 @@ export const App: React.FC = () => {
             if (job && job.status === 'RUNNING') {
               startPollingJob(savedJobId, job);
               return;
-            } else if (job && job.status === 'INTERRUPTED') {
+            } else if (job && (job.status === 'INTERRUPTED' || job.status === 'CANCELLED')) {
               setActiveMatrixJob(job);
               return;
             }
@@ -642,7 +652,7 @@ export const App: React.FC = () => {
               if (activeServerJob.status === 'RUNNING') {
                 startPollingJob(activeServerJob.job_id, activeServerJob);
                 return;
-              } else if (activeServerJob.status === 'INTERRUPTED') {
+              } else if (activeServerJob.status === 'INTERRUPTED' || activeServerJob.status === 'CANCELLED') {
                 setActiveMatrixJob(activeServerJob);
                 return;
               }
@@ -1398,13 +1408,17 @@ export const App: React.FC = () => {
                     ? 'bg-indigo-600 animate-pulse'
                     : activeMatrixJob.status === 'INTERRUPTED'
                     ? 'bg-amber-600'
-                    : activeMatrixJob.status === 'FAILED'
+                    : activeMatrixJob.status === 'CANCELLED' || activeMatrixJob.status === 'FAILED'
                     ? 'bg-rose-600'
                     : 'bg-emerald-600'
                 }`}>
                   {activeMatrixJob.status === 'RUNNING' ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : activeMatrixJob.status === 'INTERRUPTED' ? (
+                    <AlertTriangle className="w-5 h-5" />
+                  ) : activeMatrixJob.status === 'CANCELLED' ? (
+                    <Square className="w-5 h-5 fill-current" />
+                  ) : activeMatrixJob.status === 'FAILED' ? (
                     <AlertTriangle className="w-5 h-5" />
                   ) : (
                     <CheckCircle2 className="w-5 h-5" />
@@ -1415,6 +1429,8 @@ export const App: React.FC = () => {
                     <h3 className="text-base font-bold font-display text-slate-900">
                       {activeMatrixJob.status === 'RUNNING'
                         ? `Executing Workflow on Matrix (${activeMatrixJob.scenario_results?.[0]?.nodeResults?.length || currentWorkflow?.nodes?.length || ''} Nodes)...`
+                        : activeMatrixJob.status === 'CANCELLED'
+                        ? 'Matrix Execution Killed (Circuit Breaker Active)'
                         : activeMatrixJob.status === 'INTERRUPTED'
                         ? 'Matrix Execution Interrupted (Crash Recovery Available)'
                         : activeMatrixJob.status === 'FAILED'
@@ -1424,6 +1440,8 @@ export const App: React.FC = () => {
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${
                       activeMatrixJob.status === 'RUNNING'
                         ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                        : activeMatrixJob.status === 'CANCELLED'
+                        ? 'bg-rose-100 text-rose-800 border border-rose-300'
                         : activeMatrixJob.status === 'INTERRUPTED'
                         ? 'bg-amber-100 text-amber-800 border border-amber-300'
                         : activeMatrixJob.status === 'FAILED'
@@ -1432,6 +1450,8 @@ export const App: React.FC = () => {
                     }`}>
                       {activeMatrixJob.status === 'RUNNING'
                         ? 'IN PROGRESS'
+                        : activeMatrixJob.status === 'CANCELLED'
+                        ? 'KILLED (503 BLOCKED)'
                         : activeMatrixJob.status === 'INTERRUPTED'
                         ? 'INTERRUPTED (DURABLE CHECKPOINT)'
                         : activeMatrixJob.status === 'FAILED'
@@ -1479,6 +1499,22 @@ export const App: React.FC = () => {
 
             {/* Scenarios Execution Live Stepper List (Scrollable Body) */}
             <div className="p-6 space-y-4 flex-1 overflow-y-auto min-h-0">
+              {activeMatrixJob.status === 'CANCELLED' && (
+                <div className="rounded-2xl p-4 bg-rose-50 border border-rose-300 flex items-center justify-between gap-4 animate-in fade-in">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-rose-200 text-rose-900 flex items-center justify-center shrink-0 font-bold">
+                      <Square className="w-5 h-5 fill-current" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-rose-900">Execution Terminated by Administrator (Kill Switch Active)</h4>
+                      <p className="text-xs text-rose-700">
+                        {activeMatrixJob.error || 'The Workflow & Matrix Flow Execution API was shut down by an administrator. All running background coroutines and HTTP requests have been forcibly halted.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {activeMatrixJob.status === 'INTERRUPTED' && (
                 <div className="rounded-2xl p-4 bg-amber-50 border border-amber-300 flex items-center justify-between gap-4 animate-in fade-in">
                   <div className="flex items-center gap-3">
@@ -1519,6 +1555,7 @@ export const App: React.FC = () => {
                 const isScenarioRunning = scenario.status === 'RUNNING';
                 const isScenarioSuccess = scenario.status === 'SUCCESS';
                 const isScenarioFailed = scenario.status === 'FAILED';
+                const isScenarioCancelled = scenario.status === 'CANCELLED';
 
                 return (
                   <div
@@ -1528,6 +1565,8 @@ export const App: React.FC = () => {
                         ? 'bg-indigo-50/40 border-indigo-300 ring-2 ring-indigo-400/20'
                         : isScenarioSuccess
                         ? 'bg-white border-emerald-200 shadow-xs'
+                        : isScenarioCancelled
+                        ? 'bg-rose-50/40 border-rose-300'
                         : isScenarioFailed
                         ? 'bg-rose-50/30 border-rose-200'
                         : 'bg-slate-50 border-slate-200 opacity-60'
@@ -1541,6 +1580,8 @@ export const App: React.FC = () => {
                             ? 'bg-emerald-600 text-white'
                             : isScenarioRunning
                             ? 'bg-indigo-600 text-white animate-spin'
+                            : isScenarioCancelled
+                            ? 'bg-rose-700 text-white'
                             : isScenarioFailed
                             ? 'bg-rose-600 text-white'
                             : 'bg-slate-200 text-slate-600'
@@ -1571,11 +1612,13 @@ export const App: React.FC = () => {
                             ? 'bg-emerald-100 text-emerald-800'
                             : isScenarioRunning
                             ? 'bg-indigo-100 text-indigo-800'
+                            : isScenarioCancelled
+                            ? 'bg-rose-100 text-rose-800 border border-rose-300'
                             : isScenarioFailed
                             ? 'bg-rose-100 text-rose-800'
                             : 'bg-slate-100 text-slate-600'
                         }`}>
-                          {scenario.status}
+                          {isScenarioCancelled ? 'KILLED' : scenario.status}
                         </span>
                       </div>
                     </div>
@@ -1587,6 +1630,7 @@ export const App: React.FC = () => {
                         const isNodeSuccess = nr.status === 'SUCCESS';
                         const isNodeFailed = nr.status === 'FAILED';
                         const isNodeSkipped = nr.status === 'SKIPPED';
+                        const isNodeCancelled = nr.status === 'CANCELLED';
                         const isExpanded = expandedMatrixNodeKey === `${sIdx}-${nIdx}`;
 
                         return (
@@ -1597,6 +1641,8 @@ export const App: React.FC = () => {
                                 ? 'bg-indigo-50/80 border-indigo-300 ring-2 ring-indigo-400/30'
                                 : isNodeSuccess
                                 ? 'bg-emerald-50/50 border-emerald-200'
+                                : isNodeCancelled
+                                ? 'bg-rose-50/60 border-rose-300'
                                 : isNodeSkipped
                                 ? 'bg-amber-50/60 border-amber-200'
                                 : isNodeFailed
@@ -1613,13 +1659,15 @@ export const App: React.FC = () => {
                                   ? 'bg-emerald-100 text-emerald-800'
                                   : isNodeRunning
                                   ? 'bg-indigo-100 text-indigo-800 animate-pulse'
+                                  : isNodeCancelled
+                                  ? 'bg-rose-100 text-rose-800 border border-rose-200 font-bold'
                                   : isNodeSkipped
                                   ? 'bg-amber-100 text-amber-900 border border-amber-200'
                                   : isNodeFailed
                                   ? 'bg-rose-100 text-rose-800'
                                   : 'bg-slate-200 text-slate-600'
                               }`}>
-                                {isNodeRunning ? 'RUNNING...' : isNodeSkipped ? 'SKIPPED' : nr.statusCode ? `${nr.statusCode} ${nr.statusCode === 200 ? 'OK' : ''}` : nr.status}
+                                {isNodeRunning ? 'RUNNING...' : isNodeCancelled ? 'KILLED' : isNodeSkipped ? 'SKIPPED' : nr.statusCode ? `${nr.statusCode} ${nr.statusCode === 200 ? 'OK' : ''}` : nr.status}
                               </span>
                             </div>
 
@@ -1710,6 +1758,8 @@ export const App: React.FC = () => {
               <span className="text-xs text-slate-600 font-mono">
                 {activeMatrixJob.status === 'RUNNING'
                   ? '⚡ Backend background worker is executing HTTP requests...'
+                  : activeMatrixJob.status === 'CANCELLED'
+                  ? '🛑 Flow execution terminated by administrator (Kill Switch Active).'
                   : activeMatrixJob.status === 'INTERRUPTED'
                   ? `⚠️ Execution was interrupted at scenario #${(activeMatrixJob.completed_scenarios || 0) + 1}. You can resume seamlessly.`
                   : activeMatrixJob.status === 'FAILED'

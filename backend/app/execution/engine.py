@@ -160,8 +160,29 @@ class ExecutionEngine:
 
         step_order = 1
         for wave in execution_waves:
+            from app.core.kill_switch import SystemKillSwitchManager
+            if not SystemKillSwitchManager.is_allowed("flow_execution"):
+                execution_failed = True
+                error_msg = "Workflow execution aborted: Flow execution kill switch is active."
+                break
+
             # 1. Helper to run handler logic concurrently
             async def _execute_handler_task(node_item: WorkflowNode):
+                if not SystemKillSwitchManager.is_allowed("flow_execution"):
+                    n_k = node_item.get("node_key") if isinstance(node_item, dict) else node_item.node_key
+                    n_t = node_item.get("node_type") if isinstance(node_item, dict) else node_item.node_type
+                    return {
+                        "node_key": n_k,
+                        "node_type": n_t,
+                        "title": str(n_k),
+                        "failed": True,
+                        "error": "Workflow execution aborted: Flow execution kill switch is active.",
+                        "out": {"status": "CANCELLED", "error": "Killed by administrator."},
+                        "config": {},
+                        "ev_type": TraceEventType.TOOL_CALL,
+                        "norm_payload": {}
+                    }
+
                 if isinstance(node_item, dict):
                     n_key = node_item.get("key", node_item.get("node_key"))
                     n_type = node_item.get("type", node_item.get("node_type"))

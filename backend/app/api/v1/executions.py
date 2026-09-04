@@ -1072,11 +1072,21 @@ async def get_matrix_job_status(job_id: str):
                 job["completed_scenarios"] = completed_count
                 total_count = job.get("total_scenarios") or len(sc_results)
                 
-                # Dynamic job status resolution: preserve INTERRUPTED so user must explicitly click Resume
-                if completed_count >= total_count and total_count > 0:
+                # Dynamic job status resolution: preserve INTERRUPTED and CANCELLED
+                if job.get("status") in ("INTERRUPTED", "CANCELLED"):
+                    if job.get("status") == "CANCELLED":
+                        for sc in sc_results:
+                            if sc.get("status") in ("RUNNING", "PENDING"):
+                                sc["status"] = "CANCELLED"
+                            for nr in (sc.get("nodeResults") or []):
+                                if nr.get("status") in ("RUNNING", "PENDING"):
+                                    nr["status"] = "CANCELLED"
+                                    nr["statusCode"] = 499
+                                    nr["error"] = job.get("error") or "Killed by administrator (Kill Switch Active)."
+                elif completed_count >= total_count and total_count > 0:
                     any_failed = any(sc.get("status") == "FAILED" for sc in sc_results)
                     job["status"] = "FAILED" if any_failed else "COMPLETED"
-                elif job.get("status") != "INTERRUPTED" and any(sc.get("status") == "RUNNING" for sc in sc_results):
+                elif any(sc.get("status") == "RUNNING" for sc in sc_results):
                     job["status"] = "RUNNING"
     except Exception as enrich_err:
         print(f"Error enriching matrix job {job_id} live status: {enrich_err}")

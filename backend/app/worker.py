@@ -115,6 +115,12 @@ class DistributedTaskWorker:
                     status = result.get("status", "SUCCESS")
                     print(f"[{slot_tag}] [OK] Completed Task {task_id[:8]} in {dur_ms}ms (Status: {status})")
 
+                except asyncio.CancelledError:
+                    dur_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
+                    stop_heartbeat.set()
+                    await hb_coro
+                    print(f"[{slot_tag}] [CANCELLED] Task {task_id[:8]} cancelled (Kill Switch Active).")
+                    await TaskQueueEngine.fail_task(task_id, self.worker_id, "Killed by administrator (Kill Switch Active).", can_retry=False)
                 except Exception as ex:
                     dur_ms = round((time.perf_counter() - start_time) * 1000.0, 2)
                     stop_heartbeat.set()

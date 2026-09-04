@@ -36,10 +36,13 @@ class TaskQueueEngine:
 
     @classmethod
     def is_job_cancelled(cls, job_id: str) -> bool:
+        from app.core.kill_switch import SystemKillSwitchManager
+        if not SystemKillSwitchManager.is_allowed("flow_execution"):
+            return True
         return job_id in cls._cancelled_jobs
 
     @classmethod
-    async def cancel_job(cls, job_id: str) -> int:
+    async def cancel_job(cls, job_id: str, reason: str = "Execution killed by user.") -> int:
         """Cancels all active and queued tasks for a given job and aborts in-flight tasks immediately."""
         cls._cancelled_jobs.add(job_id)
         cancelled_task_count = 0
@@ -51,7 +54,10 @@ class TaskQueueEngine:
             if cls._task_to_job.get(t_id) == job_id
         ]
         for t_id, task_coro in tasks_to_cancel:
-            task_coro.cancel()
+            try:
+                task_coro.cancel()
+            except Exception:
+                pass
             cls.unregister_active_task(t_id)
             cancelled_task_count += 1
 
@@ -63,7 +69,25 @@ class TaskQueueEngine:
             db_job = res.scalar_one_or_none()
             if db_job:
                 db_job.status = "CANCELLED"
-                db_job.error = "Killed by user."
+                db_job.error = reason
+                db_job.completed_at = datetime.datetime.now(timezone.utc)
+                if db_job.scenario_results:
+                    updated_results = []
+                    for sc in db_job.scenario_results:
+                        sc_copy = dict(sc)
+                        if sc_copy.get("status") in ("RUNNING", "PENDING"):
+                            sc_copy["status"] = "CANCELLED"
+                        node_results = []
+                        for nr in (sc_copy.get("nodeResults") or []):
+                            nr_copy = dict(nr)
+                            if nr_copy.get("status") in ("RUNNING", "PENDING"):
+                                nr_copy["status"] = "CANCELLED"
+                                nr_copy["statusCode"] = 499
+                                nr_copy["error"] = reason
+                            node_results.append(nr_copy)
+                        sc_copy["nodeResults"] = node_results
+                        updated_results.append(sc_copy)
+                    db_job.scenario_results = updated_results
 
             await session.execute(
                 update(QueueTask)
@@ -71,7 +95,7 @@ class TaskQueueEngine:
                     QueueTask.job_id == job_id,
                     QueueTask.status.in_(["QUEUED", "RUNNING", "CLAIMED", "INTERRUPTED"])
                 )
-                .values(status="CANCELLED", error="Killed by user")
+                .values(status="CANCELLED", error=reason)
             )
 
             job_suffix = job_id[-6:]
@@ -85,41 +109,105 @@ class TaskQueueEngine:
             )
             await session.commit()
 
+        # 3. Synchronize in-memory matrix_jobs cache
+        try:
+            from app.api.v1.executions import matrix_jobs
+            if job_id in matrix_jobs:
+                m_job = matrix_jobs[job_id]
+                m_job["status"] = "CANCELLED"
+                m_job["error"] = reason
+                m_job["completed_at"] = datetime.datetime.now(timezone.utc).isoformat()
+                for sc in (m_job.get("scenario_results") or []):
+                    if sc.get("status") in ("RUNNING", "PENDING"):
+                        sc["status"] = "CANCELLED"
+                    for nr in (sc.get("nodeResults") or []):
+                        if nr.get("status") in ("RUNNING", "PENDING"):
+                            nr["status"] = "CANCELLED"
+                            nr["statusCode"] = 499
+                            nr["error"] = reason
+        except Exception:
+            pass
+
         return cancelled_task_count
 
     @classmethod
-    async def cancel_all(cls) -> Dict[str, Any]:
+    async def cancel_all(cls, reason: str = "Execution killed by system administrator (Kill Switch Active).") -> Dict[str, Any]:
         """Kills ALL running and queued flows and matrix jobs platform-wide."""
         # 1. Abort all active running tasks in memory
         cancelled_active = 0
         for t_id, task_coro in list(cls._running_tasks.items()):
-            task_coro.cancel()
-            cancelled_active += 1
+            try:
+                task_coro.cancel()
+                cancelled_active += 1
+            except Exception:
+                pass
         cls._running_tasks.clear()
         cls._task_to_job.clear()
 
         # 2. Update all active/interrupted/queued tasks and jobs in database
+        now = datetime.datetime.now(timezone.utc)
         async with AsyncSessionLocal() as session:
             from app.models.execution import MatrixExecutionJob, ExecutionRun, ExecutionStatus
-            # Mark matrix jobs
-            await session.execute(
-                update(MatrixExecutionJob)
-                .where(MatrixExecutionJob.status.in_(["RUNNING", "INTERRUPTED"]))
-                .values(status="CANCELLED", error="Execution killed by user.")
-            )
-            # Mark queue tasks
+            
+            # Fetch all active matrix jobs to register into _cancelled_jobs and mark scenarios
+            stmt = select(MatrixExecutionJob).where(MatrixExecutionJob.status.in_(["RUNNING", "INTERRUPTED"]))
+            res = await session.execute(stmt)
+            active_jobs = res.scalars().all()
+            for db_job in active_jobs:
+                cls._cancelled_jobs.add(db_job.id)
+                db_job.status = "CANCELLED"
+                db_job.error = reason
+                db_job.completed_at = now
+                if db_job.scenario_results:
+                    updated_results = []
+                    for sc in db_job.scenario_results:
+                        sc_copy = dict(sc)
+                        if sc_copy.get("status") in ("RUNNING", "PENDING"):
+                            sc_copy["status"] = "CANCELLED"
+                        node_results = []
+                        for nr in (sc_copy.get("nodeResults") or []):
+                            nr_copy = dict(nr)
+                            if nr_copy.get("status") in ("RUNNING", "PENDING"):
+                                nr_copy["status"] = "CANCELLED"
+                                nr_copy["statusCode"] = 499
+                                nr_copy["error"] = reason
+                            node_results.append(nr_copy)
+                        sc_copy["nodeResults"] = node_results
+                        updated_results.append(sc_copy)
+                    db_job.scenario_results = updated_results
+
+            # Mark all queued, claimed, or running queue tasks as CANCELLED
             await session.execute(
                 update(QueueTask)
                 .where(QueueTask.status.in_(["QUEUED", "RUNNING", "CLAIMED", "INTERRUPTED"]))
-                .values(status="CANCELLED", error="Execution killed by user.")
+                .values(status="CANCELLED", error=reason)
             )
-            # Mark running execution runs
+
+            # Mark running execution runs as FAILED
             await session.execute(
                 update(ExecutionRun)
                 .where(ExecutionRun.status == ExecutionStatus.RUNNING)
                 .values(status=ExecutionStatus.FAILED, quality_score=0.0)
             )
             await session.commit()
+
+        # 3. Synchronize in-memory matrix_jobs cache
+        try:
+            from app.api.v1.executions import matrix_jobs
+            for m_job in list(matrix_jobs.values()):
+                m_job["status"] = "CANCELLED"
+                m_job["error"] = reason
+                m_job["completed_at"] = now.isoformat()
+                for sc in (m_job.get("scenario_results") or []):
+                    if sc.get("status") in ("RUNNING", "PENDING"):
+                        sc["status"] = "CANCELLED"
+                    for nr in (sc.get("nodeResults") or []):
+                        if nr.get("status") in ("RUNNING", "PENDING"):
+                            nr["status"] = "CANCELLED"
+                            nr["statusCode"] = 499
+                            nr["error"] = reason
+        except Exception:
+            pass
 
         return {
             "cancelled_active_coroutines": cancelled_active,
@@ -189,7 +277,7 @@ class TaskQueueEngine:
     async def claim_next_task(cls, worker_id: str) -> Optional[Dict[str, Any]]:
         """Atomically leases the next available or stale-orphaned task without race conditions."""
         from app.core.kill_switch import SystemKillSwitchManager
-        if not SystemKillSwitchManager.is_allowed("queue_processing"):
+        if not SystemKillSwitchManager.is_allowed("queue_processing") or not SystemKillSwitchManager.is_allowed("flow_execution"):
             return None
 
         async with cls._get_claim_lock():
