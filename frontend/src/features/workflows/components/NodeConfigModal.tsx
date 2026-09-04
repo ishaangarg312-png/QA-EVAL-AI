@@ -1652,13 +1652,41 @@ export const NodeConfigModal: React.FC<NodeConfigModalProps> = ({
                               ? JSON.stringify(editingNode.config.body, null, 2)
                               : editingNode.config.body || ''
                           }
+                          onPaste={(e) => {
+                            const pasted = e.clipboardData.getData('text');
+                            if (!pasted || !pasted.trim()) return;
+                            const trimmed = pasted.trim();
+                            // If pasted content is cURL or DevTools Form Data (not standard JSON)
+                            const isJson = trimmed.startsWith('{') || trimmed.startsWith('[');
+                            if (!isJson) {
+                              const detected = parseCurlOrInspect(trimmed);
+                              if (detected && detected.body && detected.source !== 'json') {
+                                e.preventDefault();
+                                const currentCfg = editingNode.config || {};
+                                const updatedCfg: Record<string, any> = {
+                                  ...currentCfg,
+                                  body: detected.body,
+                                  body_type: detected.body_type || 'MULTIPART_FORM_DATA'
+                                };
+                                if (detected.url && !currentCfg.url) {
+                                  updatedCfg.url = detected.url;
+                                }
+                                if (detected.headers && Object.keys(detected.headers).length > 0) {
+                                  updatedCfg.headers = { ...(currentCfg.headers || {}), ...detected.headers };
+                                }
+                                setEditingNode({ ...editingNode, config: updatedCfg });
+                                return;
+                              }
+                            }
+                          }}
                           onChange={(e) => {
                             const val = e.target.value;
-                            // Auto-detect direct paste from Chrome DevTools Form Data, cURL, or repaired JSON
-                            const detected = parseCurlOrInspect(val);
-                            if (detected && detected.body) {
-                              const isMangledJson = val.includes('^') || val.includes('  Confirm');
-                              if (detected.source !== 'json' || isMangledJson) {
+                            const trimmed = val.trim();
+
+                            // Only auto-detect if user literally pasted a full cURL command starting with "curl"
+                            if (trimmed.toLowerCase().startsWith('curl')) {
+                              const detected = parseCurlOrInspect(val);
+                              if (detected && detected.body) {
                                 const currentCfg = editingNode.config || {};
                                 const updatedCfg: Record<string, any> = {
                                   ...currentCfg,

@@ -426,8 +426,15 @@ export function parseCurlOrInspect(input: string): ParsedRequest | null {
 
   // -------------------------------------------------------------
   // Case 2: Raw DevTools "Form Data" Key-Value Lines
+  // (Only for raw DevTools dumps like 'key: value'; NEVER for JSON starting with { or [)
   // -------------------------------------------------------------
-  if (!text.toLowerCase().startsWith('curl') && !directMultipartFields) {
+  const isLikelyJson =
+    text.startsWith('{') ||
+    text.startsWith('[') ||
+    text.endsWith('}') ||
+    text.endsWith(']');
+
+  if (!text.toLowerCase().startsWith('curl') && !directMultipartFields && !isLikelyJson) {
     const rawEntries = text.includes('\n')
       ? text.split(/\r?\n/)
       : text.split('&');
