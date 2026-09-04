@@ -557,45 +557,19 @@ export const LoginPage: React.FC = () => {
             <input type="password" style={{ display: 'none' }} tabIndex={-1} autoComplete="current-password" />
 
             {tab === 'register' && (
-              <>
-                <div className="figma-input-wrapper">
-                  <div className="figma-input-icon">👤</div>
-                  <input
-                    type="text"
-                    required
-                    name="eval-auth-name"
-                    autoComplete="off"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Full Name"
-                    className="figma-input"
-                  />
-                </div>
-
-                <div className="figma-input-wrapper">
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value as UserRole)}
-                    style={{
-                      width: '100%',
-                      height: '42px',
-                      padding: '0 14px',
-                      fontSize: '0.84rem',
-                      backgroundColor: '#0c1222',
-                      border: '1px solid #1e293b',
-                      borderRadius: '10px',
-                      color: '#ffffff',
-                      boxSizing: 'border-box'
-                    }}
-                  >
-                    <option value="QA_ENGINEER" style={{ background: '#0b132b', color: '#ffffff' }}>QA Engineer</option>
-                    <option value="QA_LEAD" style={{ background: '#0b132b', color: '#ffffff' }}>QA Lead</option>
-                    <option value="PRODUCT_OWNER" style={{ background: '#0b132b', color: '#ffffff' }}>Product Owner</option>
-                    <option value="SECURITY_AUDITOR" style={{ background: '#0b132b', color: '#ffffff' }}>Security Auditor</option>
-                    <option value="ADMIN" style={{ background: '#0b132b', color: '#ffffff' }}>Administrator</option>
-                  </select>
-                </div>
-              </>
+              <div className="figma-input-wrapper">
+                <div className="figma-input-icon">👤</div>
+                <input
+                  type="text"
+                  required
+                  name="eval-auth-name"
+                  autoComplete="off"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Full Name"
+                  className="figma-input"
+                />
+              </div>
             )}
 
             {/* Email Field with Send/Resend OTP Button */}
