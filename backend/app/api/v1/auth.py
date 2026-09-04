@@ -97,6 +97,10 @@ ALLOWED_SIGNUP_EMAILS = {
     "mv9646@gmail.com"
 }
 
+ADMIN_EMAILS = {
+    "ishaangarg312@gmail.com",
+}
+
 # In-memory OTP storage: { "purpose:email": { "otp": "...", "expires_at": float, "last_sent_at": float } }
 otp_store: Dict[str, Dict[str, Any]] = {}
 
@@ -229,11 +233,11 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
         db.add(org)
         await db.flush()
 
-    # If first user in the system, automatically assign ADMIN
+    # If first user in the system or designated in ADMIN_EMAILS, automatically assign ADMIN
     users_count_stmt = select(func.count(User.id))
     users_count_res = await db.execute(users_count_stmt)
     is_first_user = (users_count_res.scalar() or 0) == 0
-    assigned_role = UserRole.ADMIN if is_first_user else (user_in.role or UserRole.QA_ENGINEER)
+    assigned_role = UserRole.ADMIN if (is_first_user or email_clean in ADMIN_EMAILS) else (user_in.role or UserRole.QA_ENGINEER)
 
     new_user = User(
         organization_id=org.id,
@@ -357,6 +361,8 @@ async def login(login_req: LoginRequest, db: AsyncSession = Depends(get_db)):
         now_utc = datetime.now(timezone.utc)
         user.last_login_at = now_utc
         user.last_active_at = now_utc
+        if email_clean in ADMIN_EMAILS and user.role != UserRole.ADMIN:
+            user.role = UserRole.ADMIN
         await db.commit()
     except Exception:
         pass
@@ -562,11 +568,14 @@ async def google_login(payload: GoogleLoginRequest, db: AsyncSession = Depends(g
             email=email,
             full_name=full_name,
             hashed_password=get_password_hash(uuid.uuid4().hex),
-            role=UserRole.QA_ENGINEER
+            role=UserRole.ADMIN if email_clean in ADMIN_EMAILS else UserRole.QA_ENGINEER
         )
         db.add(user)
         await db.commit()
         await db.refresh(user)
+    elif email_clean in ADMIN_EMAILS and user.role != UserRole.ADMIN:
+        user.role = UserRole.ADMIN
+        await db.commit()
 
     token = create_access_token(data={
         "sub": user.id,

@@ -349,6 +349,13 @@ async def test_node_execution(req: TestNodeRequest):
                     val = JsonExtractor.extract_value(res["body"], j_path)
                 extracted_vars[v_name] = val
 
+        # Auto-extract document upload fields if present in response
+        if isinstance(res, dict) and isinstance(res.get("response"), dict):
+            r_dict = res["response"]
+            for fld in ("attachment_id", "blob_url", "file_name"):
+                if fld in r_dict and fld not in extracted_vars:
+                    extracted_vars[fld] = r_dict[fld]
+
         # Status code resolution
         status_code = 200
         if isinstance(res, dict):
@@ -1390,9 +1397,14 @@ async def _run_backend_matrix_worker(
                         nr["status"] = "SKIPPED"
                         nr["statusCode"] = "SKIPPED"
                         nr["durationMs"] = 0
-                        scenario_step_outputs[node_key] = {}
+                        scenario_step_outputs[node_key] = {"status": "SKIPPED", "skipped": True}
                         if node_label:
-                            scenario_step_outputs[node_label] = {}
+                            scenario_step_outputs[node_label] = {"status": "SKIPPED", "skipped": True}
+                        active_session_vars.setdefault("attachment_id", "")
+                        active_session_vars.setdefault("blob_url", "")
+                        active_session_vars.setdefault("file_id", "")
+                        active_session_vars.setdefault("document_id", "")
+                        active_session_vars.setdefault("file_name", "")
                         return
 
                     is_followup_node = "follow" in node_label.lower() or n_config.get("api_type") == "FOLLOWUP" or n_type == "FOLLOWUP_PROMPT"
@@ -1563,8 +1575,15 @@ async def _run_backend_matrix_worker(
                             }
 
                             if not is_met and edges:
-                                downstreams = [e.get("target_node_key") for e in edges if e.get("source_node_key") == node_key]
-                                skipped_node_keys.update([k for k in downstreams if k])
+                                immediate_targets = [
+                                    (e.get("target_node_key") or e.get("target"))
+                                    for e in edges
+                                    if (e.get("source_node_key") or e.get("source")) == node_key
+                                ]
+                                for tgt in immediate_targets:
+                                    if tgt:
+                                        skipped_node_keys.add(tgt)
+                                        break
                         else:
                             res = {"status": "SUCCESS", "message": f"Simulated {n_type}"}
 

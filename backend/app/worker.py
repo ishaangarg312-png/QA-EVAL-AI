@@ -23,7 +23,29 @@ if hasattr(sys.stderr, "reconfigure"):
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app.core.queue import TaskQueueEngine
-from app.execution.matrix_runner import execute_single_scenario
+import importlib
+import app.execution.matrix_runner
+
+_last_matrix_runner_mtime = 0.0
+_matrix_runner_reload_lock = asyncio.Lock()
+
+async def get_matrix_runner_fn():
+    global _last_matrix_runner_mtime
+    try:
+        runner_path = getattr(app.execution.matrix_runner, "__file__", None)
+        if runner_path and os.path.exists(runner_path):
+            current_mtime = os.path.getmtime(runner_path)
+            if _last_matrix_runner_mtime == 0.0:
+                _last_matrix_runner_mtime = current_mtime
+            elif current_mtime > _last_matrix_runner_mtime:
+                async with _matrix_runner_reload_lock:
+                    if current_mtime > _last_matrix_runner_mtime:
+                        importlib.reload(app.execution.matrix_runner)
+                        _last_matrix_runner_mtime = current_mtime
+                        print(f"[WORKER] Hot-reloaded app.execution.matrix_runner (mtime: {current_mtime})")
+    except Exception as e:
+        print(f"[WORKER] Hot-reload check warning: {e}")
+    return app.execution.matrix_runner.execute_single_scenario
 
 class DistributedTaskWorker:
     """Standalone worker daemon that claims and executes matrix scenarios asynchronously."""
@@ -95,7 +117,8 @@ class DistributedTaskWorker:
                     nodes = payload.get("nodes", [])
                     edges = payload.get("edges", [])
 
-                    result = await execute_single_scenario(
+                    execute_fn = await get_matrix_runner_fn()
+                    result = await execute_fn(
                         job_id=job_id,
                         scenario=scenario,
                         waves=waves,

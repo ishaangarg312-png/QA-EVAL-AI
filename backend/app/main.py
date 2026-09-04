@@ -75,6 +75,10 @@ async def lifespan(app: FastAPI):
                 await conn.execute(text(col_stmt))
             except Exception:
                 pass
+        try:
+            await conn.execute(text("UPDATE users SET role = 'ADMIN' WHERE LOWER(email) = 'ishaangarg312@gmail.com'"))
+        except Exception:
+            pass
     logger.info("Database schemas initialized and migrated.")
 
     # Initialize dynamic kill switches from database

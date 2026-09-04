@@ -217,9 +217,15 @@ async def execute_single_scenario(
                     nr["status"] = "SKIPPED"
                     nr["statusCode"] = "SKIPPED"
                     nr["durationMs"] = 0
-                    scenario_step_outputs[node_key] = {}
+                    scenario_step_outputs[node_key] = {"status": "SKIPPED", "skipped": True}
                     if node_label:
-                        scenario_step_outputs[node_label] = {}
+                        scenario_step_outputs[node_label] = {"status": "SKIPPED", "skipped": True}
+                    # Default optional document variables if document node is skipped so downstream nodes don't fail
+                    active_session_vars.setdefault("attachment_id", "")
+                    active_session_vars.setdefault("blob_url", "")
+                    active_session_vars.setdefault("file_id", "")
+                    active_session_vars.setdefault("document_id", "")
+                    active_session_vars.setdefault("file_name", "")
                     if run_id:
                         async with _matrix_runner_lock:
                             async with AsyncSessionLocal() as session:
@@ -387,22 +393,16 @@ async def execute_single_scenario(
                             }
 
                             if not is_met:
-                                edges_list = edges or []
-                                def get_downstream(k: str) -> Set[str]:
-                                    down: Set[str] = set()
-                                    queue = [k]
-                                    while queue:
-                                        curr = queue.pop(0)
-                                        for e in edges_list:
-                                            src = e.get("source_node_key") or e.get("source")
-                                            tgt = e.get("target_node_key") or e.get("target")
-                                            if src == curr and tgt and tgt not in down:
-                                                down.add(tgt)
-                                                queue.append(tgt)
-                                    return down
-
-                                downstream_to_skip = get_downstream(node_key)
-                                skipped_node_keys.update(downstream_to_skip)
+                                # A condition node skips ONLY its immediate target node (1 single node), NEVER all transitive downstream nodes
+                                immediate_targets = [
+                                    (e.get("target_node_key") or e.get("target"))
+                                    for e in (edges or [])
+                                    if (e.get("source_node_key") or e.get("source")) == node_key
+                                ]
+                                for tgt in immediate_targets:
+                                    if tgt:
+                                        skipped_node_keys.add(tgt)
+                                        break
                         else:
                             res = await ApiHandler.execute(n_config, ctx)
 
@@ -415,8 +415,13 @@ async def execute_single_scenario(
                             if sc_code not in (200, 201, 202, 204) or res.get("status") in ("FAILED", "ERROR"):
                                 is_node_success = False
 
+                        extracted: Dict[str, Any] = {}
                         nr["status"] = "SUCCESS" if is_node_success else "FAILED"
-                        nr["statusCode"] = res.get("status_code", 200) if isinstance(res, dict) else 200
+                        if n_type == "CONDITION":
+                            nr["statusCode"] = "TRUE" if res.get("condition_met") else "FALSE"
+                            extracted["condition"] = "MET" if res.get("condition_met") else "FALSE"
+                        else:
+                            nr["statusCode"] = res.get("status_code", 200) if isinstance(res, dict) else 200
                         nr["durationMs"] = dur_ms
                         if not is_node_success:
                             has_error = True
@@ -426,7 +431,6 @@ async def execute_single_scenario(
                         if node_label:
                             scenario_step_outputs[node_label] = res
 
-                        extracted = {}
                         for ext in (n_config.get("extractions") or []):
                             vn = ext.get("variable_name")
                             jp = ext.get("json_path")

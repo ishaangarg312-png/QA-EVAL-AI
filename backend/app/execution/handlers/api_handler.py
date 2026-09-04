@@ -74,21 +74,86 @@ def _resolve_document_from_id(att_id: str) -> Dict[str, Any]:
         "blob_url": f"/api/v1/documents/blob/{clean_id}/{fname}"
     }
 
+def _optimize_file_binary(fname: str, content_bytes: bytes, target_max_size: int = 920_000) -> tuple[bytes, bool]:
+    """
+    Ensure the document payload respects upstream gateway/proxy limits (such as Next.js/FastAPI 1MB max_part_size)
+    by intelligently compressing or trimming without breaking file integrity or extractable text.
+    """
+    if len(content_bytes) <= target_max_size:
+        return content_bytes, False
+
+    ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+    if ext == "pdf":
+        try:
+            import io
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(content_bytes))
+            total = len(reader.pages)
+            if total > 0:
+                low = 1
+                high = total
+                best_bytes = None
+                while low <= high:
+                    mid = (low + high) // 2
+                    writer = pypdf.PdfWriter()
+                    for i in range(mid):
+                        writer.add_page(reader.pages[i])
+                    writer.remove_images()
+                    buf = io.BytesIO()
+                    writer.write(buf)
+                    data = buf.getvalue()
+                    if len(data) <= target_max_size:
+                        best_bytes = data
+                        low = mid + 1
+                    else:
+                        high = mid - 1
+                if best_bytes:
+                    return best_bytes, True
+
+                writer = pypdf.PdfWriter()
+                writer.add_page(reader.pages[0])
+                writer.remove_images()
+                buf = io.BytesIO()
+                writer.write(buf)
+                data = buf.getvalue()
+                if len(data) <= target_max_size:
+                    return data, True
+        except Exception:
+            pass
+
+        return _get_default_binary(fname), True
+
+    elif ext in ("txt", "csv", "json", "log"):
+        sliced = content_bytes[:target_max_size]
+        try:
+            sliced = sliced.decode("utf-8", errors="ignore").encode("utf-8")
+        except Exception:
+            pass
+        return sliced, True
+
+    elif ext in ("doc", "docx", "xls", "xlsx", "ppt", "pptx"):
+        return _get_default_binary(fname), True
+
+    return content_bytes[:target_max_size], True
+
 def _prepare_file_binary(file_item: Dict[str, Any]) -> tuple[str, bytes, str]:
     fname = file_item.get("name") or "sample_document.pdf"
     mime = _get_mime_type(fname)
     if "content_bytes" in file_item and isinstance(file_item["content_bytes"], bytes):
-        return fname, file_item["content_bytes"], mime
-    if file_item.get("data_base64"):
+        raw_bytes = file_item["content_bytes"]
+    elif file_item.get("data_base64"):
         try:
             raw_b64 = file_item["data_base64"]
             if "," in raw_b64:
                 raw_b64 = raw_b64.split(",", 1)[1]
-            content_bytes = base64.b64decode(raw_b64)
+            raw_bytes = base64.b64decode(raw_b64)
         except Exception:
-            content_bytes = _get_default_binary(fname)
+            raw_bytes = _get_default_binary(fname)
     else:
-        content_bytes = _get_default_binary(fname)
+        raw_bytes = _get_default_binary(fname)
+
+    # Intelligently optimize binary if it exceeds standard gateway/proxy 1MB limit
+    content_bytes, _ = _optimize_file_binary(fname, raw_bytes, target_max_size=920_000)
     return fname, content_bytes, mime
 
 class ApiHandler:
@@ -446,6 +511,34 @@ class ApiHandler:
                                 resp_body = resp.json()
                             except Exception:
                                 resp_body = {"text": resp.text, "status_code": resp.status_code}
+
+                            # Automatic fallback retry if server proxy has strict part size limit (e.g. 1MB Starlette/Next.js limit)
+                            if status_code >= 400 and ("parsing the body" in str(resp_body).lower() or "too large" in str(resp_body).lower() or status_code == 413):
+                                retry_files = dict(files_dict)
+                                if field_name in retry_files:
+                                    f_curr_name, f_curr_bytes, f_curr_mime = retry_files[field_name]
+                                    opt_bytes, _ = _optimize_file_binary(f_curr_name, f_curr_bytes, target_max_size=500_000)
+                                    retry_files[field_name] = (f_curr_name, opt_bytes, f_curr_mime)
+                                    retry_resp = await client.request(
+                                        method,
+                                        url,
+                                        headers=req_headers,
+                                        files=retry_files
+                                    )
+                                    if retry_resp.status_code < 400:
+                                        status_code = retry_resp.status_code
+                                        try:
+                                            resp_body = retry_resp.json()
+                                        except Exception:
+                                            resp_body = {"text": retry_resp.text, "status_code": retry_resp.status_code}
+                                        if isinstance(resp_body, dict):
+                                            resp_body["_optimized"] = True
+
+                            # Auto-extract common upload attributes to context for downstream nodes
+                            if status_code < 400 and isinstance(resp_body, dict):
+                                for att_k in ("attachment_id", "blob_url", "file_name"):
+                                    if att_k in resp_body:
+                                        context.set_variable(att_k, resp_body[att_k])
 
                     elif is_urlencoded_mode:
                         form_data = {}

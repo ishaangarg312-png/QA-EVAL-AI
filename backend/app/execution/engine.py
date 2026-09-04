@@ -280,6 +280,36 @@ class ExecutionEngine:
                         title = f"Email: {out['subject']}"
                         norm_payload = out
 
+                    elif n_type == NodeType.CONDITION:
+                        var_name = n_config.get("condition_variable") or n_config.get("variable") or "file_id"
+                        var_clean = var_name.replace("{{", "").replace("}}", "").strip()
+                        actual_val = context.resolve_path(var_clean) or context.resolve_path(var_name)
+                        actual_str = str(actual_val if actual_val is not None else "").strip()
+                        op = n_config.get("operator", "is_not_empty")
+                        expected = str(n_config.get("condition_value", n_config.get("expected_value", ""))).strip()
+                        if op == "is_not_empty":
+                            is_met = bool(actual_str)
+                        elif op == "is_empty":
+                            is_met = not bool(actual_str)
+                        elif op == "equals":
+                            is_met = (actual_str == expected)
+                        elif op == "not_equals":
+                            is_met = (actual_str != expected)
+                        elif op == "contains":
+                            is_met = (expected in actual_str)
+                        else:
+                            is_met = bool(actual_str)
+                        out = {
+                            "status": "SUCCESS" if is_met else "SKIPPED",
+                            "condition_met": is_met,
+                            "variable": var_name,
+                            "actual_value": actual_str,
+                            "expected_value": expected
+                        }
+                        ev_type = TraceEventType.PROMPT
+                        title = f"Condition: {var_name} ({'TRUE' if is_met else 'FALSE'})"
+                        norm_payload = out
+
                     else:
                         out = {"status": "SKIPPED", "duration_ms": 1.0}
                         ev_type = TraceEventType.PROMPT
