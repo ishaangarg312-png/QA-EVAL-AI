@@ -283,11 +283,23 @@ class ApiHandler:
         else:
             # Real HTTP invocation with SSL bypass and optional Multi-Run execution
             try:
+                if url.startswith("/"):
+                    url = f"http://127.0.0.1:8000{url}"
+
                 req_headers = dict(headers) if isinstance(headers, dict) else {}
                 if "User-Agent" not in req_headers and "user-agent" not in req_headers:
                     req_headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                 if "Accept" not in req_headers and "accept" not in req_headers:
                     req_headers["Accept"] = "application/json, text/plain, */*"
+
+                # If calling local platform API and Authorization is missing or an unresolved placeholder {{...}},
+                # fallback to active token from execution context
+                is_local_platform = "127.0.0.1:8000" in url or "localhost:8000" in url
+                auth_val = req_headers.get("Authorization") or req_headers.get("authorization")
+                if is_local_platform and (not auth_val or "{{" in str(auth_val)):
+                    ctx_token = context.get_variable("auth_token") or context.get_variable("access_token") or context.get_variable("token")
+                    if ctx_token and not str(ctx_token).startswith("{{"):
+                        req_headers["Authorization"] = f"Bearer {ctx_token}"
 
                 timeout_val = float(node_config.get("timeout_seconds") or node_config.get("timeout") or 60.0)
                 field_name = node_config.get("file_field_name") or "file"

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { WorkflowNode } from '../../../types';
+import { api } from '../../../services/api';
 import { cleanAndFormatJson } from '../utils/workflowHelpers';
 import {
   Zap,
@@ -46,16 +47,11 @@ export const JsonStudioModal: React.FC<JsonStudioModalProps> = ({
     setAiChangesList([]);
     try {
       const vars = availableUpstreamVariables.map((v) => v.variable_name);
-      const res = await fetch('/api/v1/workflows/ai-parameterize-json', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          raw_json: jsonStudioRaw,
-          available_variables: vars,
-          groq_api_key: groqApiKey.trim() || undefined,
-        }),
+      const data = await api.aiParameterizeJson({
+        raw_json: jsonStudioRaw,
+        available_variables: vars,
+        groq_api_key: groqApiKey.trim() || undefined,
       });
-      const data = await res.json();
       if (data.parameterized_json) {
         try {
           const parsed = JSON.parse(data.parameterized_json);

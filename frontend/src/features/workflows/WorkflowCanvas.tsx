@@ -547,19 +547,13 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           if (abortExecutionRef.current) return { success: false, node };
 
           try {
-            const resp = await fetch('http://127.0.0.1:8000/api/v1/executions/test-node', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                node_type: node.node_type,
-                config: node.config,
-                initial_variables: currentLiveVars,
-                step_outputs: currentStepOutputs,
-                extractions: node.config?.extractions || []
-              })
+            const data = await api.testNode({
+              node_type: node.node_type,
+              config: node.config,
+              initial_variables: currentLiveVars,
+              step_outputs: currentStepOutputs,
+              extractions: node.config?.extractions || []
             });
-
-            const data = await resp.json();
 
             if (abortExecutionRef.current) return { success: false, node };
 
@@ -740,17 +734,12 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
 
         for (const upNode of upstreamNodes) {
           try {
-            const upResp = await fetch('http://127.0.0.1:8000/api/v1/executions/test-node', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                node_type: upNode.node_type,
-                config: upNode.config,
-                initial_variables: { ...mergedLive, ...allStepOutputs },
-                extractions: upNode.config?.extractions || []
-              })
+            const upData = await api.testNode({
+              node_type: upNode.node_type,
+              config: upNode.config,
+              initial_variables: { ...mergedLive, ...allStepOutputs },
+              extractions: upNode.config?.extractions || []
             });
-            const upData = await upResp.json();
             if (upData.response) {
               allStepOutputs[upNode.node_key] = upData.response;
               allStepOutputs[upNode.label] = upData.response;
@@ -789,10 +778,12 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
           ? mergedLive.session_id
           : defaultUuid;
 
+      const defaultToken = localStorage.getItem('auth_token') || '';
       const initialVars = {
         user_id: mergedLive.user_id && mergedLive.user_id !== 'usr-9021' ? mergedLive.user_id : defaultUuid,
-        auth_token: mergedLive.access_token || mergedLive.auth_token,
-        access_token: mergedLive.access_token || mergedLive.auth_token,
+        auth_token: mergedLive.access_token || mergedLive.auth_token || defaultToken,
+        access_token: mergedLive.access_token || mergedLive.auth_token || defaultToken,
+        token: mergedLive.access_token || mergedLive.auth_token || defaultToken,
         session_id: validSessionId,
         job_id: mergedLive.job_id && mergedLive.job_id !== 'job-9841' ? mergedLive.job_id : defaultUuid,
         doc_id: 'doc-771',
@@ -813,18 +804,13 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         }))
       ];
 
-      const resp = await fetch('http://127.0.0.1:8000/api/v1/executions/test-node', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          node_type: nodeToTest.node_type,
-          config: nodeToTest.config,
-          initial_variables: initialVars,
-          step_outputs: allStepOutputs,
-          extractions: allExtractions
-        })
+      const data = await api.testNode({
+        node_type: nodeToTest.node_type,
+        config: nodeToTest.config,
+        initial_variables: initialVars,
+        step_outputs: allStepOutputs,
+        extractions: allExtractions
       });
-      const data = await resp.json();
       setTestResponse(data);
 
       if (data.response) {
@@ -859,19 +845,20 @@ export const WorkflowCanvas: React.FC<WorkflowCanvasProps> = ({
         }
       }));
       return data;
-    } catch {
+    } catch (err: any) {
+      const errMsg = err?.response?.data?.detail || err?.message || 'Failed to execute node test';
       const fallbackData = {
-        status: 'SUCCESS',
-        status_code: 200,
-        duration_ms: 42.1,
-        response: { message: 'Sample test response', timestamp: new Date().toISOString() },
+        status: 'FAILED',
+        status_code: err?.response?.status || 500,
+        duration_ms: 0,
+        response: err?.response?.data || { error: errMsg },
         extracted_variables: {},
-        error: null
+        error: errMsg
       };
       setTestResponse(fallbackData);
       setNodeTestResults((prev) => ({
         ...prev,
-        [nodeToTest.node_key]: { status: 'SUCCESS', code: 200, time: 42 }
+        [nodeToTest.node_key]: { status: 'FAILED', code: fallbackData.status_code, time: 0 }
       }));
       return fallbackData;
     } finally {

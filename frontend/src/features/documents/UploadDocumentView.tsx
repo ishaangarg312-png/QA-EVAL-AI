@@ -167,10 +167,16 @@ export const UploadDocumentView: React.FC<UploadDocumentViewProps> = ({
         let returnedBlobUrl = URL.createObjectURL(file);
 
         const targetUrl = customApiUrl.trim() || '/api/v1/documents/upload';
+        const authToken = localStorage.getItem('auth_token');
+        const uploadHeaders: Record<string, string> = {};
+        if (authToken) {
+          uploadHeaders['Authorization'] = `Bearer ${authToken}`;
+        }
 
         if (targetUrl.startsWith('/api/v1') || targetUrl.includes(window.location.host)) {
           const res = await fetch(targetUrl, {
             method: 'POST',
+            headers: uploadHeaders,
             body: formData,
           });
 

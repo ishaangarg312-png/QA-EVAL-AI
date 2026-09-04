@@ -157,6 +157,15 @@ export const api = {
     return res.data;
   },
 
+  aiParameterizeJson: async (payload: {
+    raw_json: string;
+    available_variables: string[];
+    groq_api_key?: string;
+  }): Promise<any> => {
+    const res = await apiClient.post('/workflows/ai-parameterize-json', payload);
+    return res.data;
+  },
+
   // Datasets
   getDatasets: async (projectId: string): Promise<TestDataset[]> => {
     const res = await apiClient.get<TestDataset[]>('/datasets', { params: { project_id: projectId } });
@@ -264,6 +273,17 @@ export const api = {
 
   getMatrixNodePayload: async (jobId: string, scenarioIndex: number, nodeKey: string): Promise<any> => {
     const res = await apiClient.get(`/executions/matrix-job/${jobId}/scenario/${scenarioIndex}/node/${nodeKey}/payload`);
+    return res.data;
+  },
+
+  testNode: async (payload: {
+    node_type: string;
+    config?: any;
+    initial_variables?: any;
+    step_outputs?: any;
+    extractions?: any[];
+  }): Promise<any> => {
+    const res = await apiClient.post('/executions/test-node', payload);
     return res.data;
   },
 
