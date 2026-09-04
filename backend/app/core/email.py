@@ -15,9 +15,17 @@ def _send_smtp_sync(recipient: str, subject: str, html_content: str, text_conten
     password = (settings.SMTP_PASSWORD or os.getenv("SMTP_PASSWORD", "")).strip().replace(" ", "")
     from_name = settings.SMTP_FROM_NAME or "EVAL AI Security"
 
-    # Dynamically check freshest values from .env.local so changes apply immediately without server restart
     root_dir = Path(__file__).resolve().parent.parent.parent.parent
-    for env_file in [root_dir / ".env.local", Path.cwd() / ".env.local", root_dir / ".env"]:
+    search_paths = [
+        Path("/opt/eval-ai-platform/.env.local"),
+        root_dir / ".env.local",
+        Path.cwd() / ".env.local",
+        Path.cwd().parent / ".env.local",
+        root_dir / "backend" / ".env.local",
+        root_dir / ".env",
+        Path.cwd() / ".env",
+    ]
+    for env_file in search_paths:
         if env_file.exists():
             vals = dotenv_values(env_file)
             if vals.get("SMTP_USER"):
@@ -26,7 +34,8 @@ def _send_smtp_sync(recipient: str, subject: str, html_content: str, text_conten
                 password = vals["SMTP_PASSWORD"].strip().replace(" ", "")
             if vals.get("SMTP_FROM_NAME"):
                 from_name = vals["SMTP_FROM_NAME"].strip()
-            break
+            if user and password:
+                break
 
     if not user or not password:
         logger.warning(f"[SMTP NOTICE] SMTP_USER or SMTP_PASSWORD not set. Backup OTP logged to terminal.")

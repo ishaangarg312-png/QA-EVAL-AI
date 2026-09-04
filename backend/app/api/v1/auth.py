@@ -131,14 +131,11 @@ async def send_otp(payload: SendOtpRequest, db: AsyncSession = Depends(get_db)):
             "cooldown_seconds": 30
         }
     else:
-        logger.warning(f"[SMTP FALLBACK] Email delivery to {email_clean} failed. Backup OTP: {otp_code}")
-        return {
-            "status": "warning",
-            "message": f"Verification code generated (check terminal or use code below): {otp_code}",
-            "delivered": False,
-            "backup_otp": otp_code,
-            "cooldown_seconds": 15
-        }
+        logger.error(f"[SMTP DELIVERY FAILED] Email delivery to {email_clean} failed.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to send verification email. Please ensure SMTP_USER and SMTP_PASSWORD are configured in .env.local on the server."
+        )
 
 
 @router.post("/register", response_model=UserResponse)

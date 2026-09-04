@@ -140,12 +140,7 @@ export const LoginPage: React.FC = () => {
       const res = await api.sendOtp(emailClean, currentPurpose);
       setOtpSent(true);
       setOtpCooldown(res.cooldown_seconds || 30);
-      if (res.backup_otp) {
-        setOtp(res.backup_otp);
-        setSuccessMsg(res.message || `Verification code: ${res.backup_otp}`);
-      } else {
-        setSuccessMsg(res.message || `Verification code sent to ${emailClean}! Check your inbox.`);
-      }
+      setSuccessMsg(res.message || `Verification code sent to ${emailClean}! Check your inbox.`);
     } catch (err: any) {
       const msg = err.response?.data?.detail || err.message || 'Failed to send OTP';
       setError(msg);
