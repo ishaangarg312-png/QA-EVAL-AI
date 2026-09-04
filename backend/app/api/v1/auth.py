@@ -54,10 +54,36 @@ async def get_authenticated_user(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account not found or deactivated.",
+            detail="User account not found.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if str(user.is_active).lower() in ("false", "0"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been deactivated by an administrator. Please contact support.",
+        )
+
+    # Touch activity
+    try:
+        from datetime import datetime, timezone
+        user.last_active_at = datetime.now(timezone.utc)
+        await db.commit()
+    except Exception:
+        pass
+
     return user
+
+
+async def require_admin_user(
+    current_user: User = Depends(get_authenticated_user)
+) -> User:
+    role_str = (current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)).upper()
+    if role_str != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Administrative privileges required to access this resource."
+        )
+    return current_user
 
 import time
 import random
@@ -140,6 +166,13 @@ async def send_otp(payload: SendOtpRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/register", response_model=UserResponse)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    from app.core.kill_switch import SystemKillSwitchManager
+    if not SystemKillSwitchManager.is_allowed("user_registration"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Public user registrations are temporarily disabled by an administrator."
+        )
+
     email_clean = user_in.email.strip().lower()
     if email_clean not in ALLOWED_SIGNUP_EMAILS:
         raise HTTPException(
@@ -196,12 +229,18 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
         db.add(org)
         await db.flush()
 
+    # If first user in the system, automatically assign ADMIN
+    users_count_stmt = select(func.count(User.id))
+    users_count_res = await db.execute(users_count_stmt)
+    is_first_user = (users_count_res.scalar() or 0) == 0
+    assigned_role = UserRole.ADMIN if is_first_user else (user_in.role or UserRole.QA_ENGINEER)
+
     new_user = User(
         organization_id=org.id,
         email=user_in.email,
         full_name=user_in.full_name,
         hashed_password=get_password_hash(user_in.password),
-        role=user_in.role
+        role=assigned_role
     )
     db.add(new_user)
     await db.commit()
@@ -223,6 +262,21 @@ async def custom_token_login(req: CustomTokenLoginRequest, db: AsyncSession = De
     user = res.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="No user found to associate with token")
+    
+    if str(user.is_active).lower() in ("false", "0"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been deactivated by an administrator. Please contact support."
+        )
+
+    try:
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc)
+        user.last_login_at = now_utc
+        user.last_active_at = now_utc
+        await db.commit()
+    except Exception:
+        pass
     
     jwt_token = create_access_token(data={
         "sub": user.id,
@@ -253,6 +307,12 @@ async def login(login_req: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+    if str(user.is_active).lower() in ("false", "0"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Your account has been deactivated by an administrator. Please contact support."
+        )
 
     # If normal login (not master custom token), validate OTP first
     if not is_custom_token_match:
@@ -291,6 +351,15 @@ async def login(login_req: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not is_custom_token_match:
         otp_store.pop(store_key, None)
         otp_store.pop(email_clean, None)
+
+    try:
+        from datetime import datetime, timezone
+        now_utc = datetime.now(timezone.utc)
+        user.last_login_at = now_utc
+        user.last_active_at = now_utc
+        await db.commit()
+    except Exception:
+        pass
 
     token = create_access_token(data={
         "sub": user.id,

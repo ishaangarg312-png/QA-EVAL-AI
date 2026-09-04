@@ -23,6 +23,7 @@ import { RegressionMatrix } from './features/regression/RegressionMatrix';
 import { TestManagementView } from './features/test_management/TestManagementView';
 import { UploadDocumentView } from './features/documents/UploadDocumentView';
 import { SwarmAsyncHubView } from './features/swarm_async/SwarmAsyncHubView';
+import { AdminPanelView } from './features/admin/AdminPanelView';
 import { HITLModal } from './features/executions/HITLModal';
 import { RCAModal } from './features/rca/RCAModal';
 import { CreateProjectModal } from './components/CreateProjectModal';
@@ -54,8 +55,15 @@ import {
 } from 'lucide-react';
 
 export const App: React.FC = () => {
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth();
   const [activeTab, setActiveTab] = useState<NavTab>('dashboard');
+
+  // RBAC Guard: Redirect non-admins away from admin panel
+  useEffect(() => {
+    if (activeTab === 'admin_panel' && user && user.role?.toUpperCase() !== 'ADMIN') {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, user]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [currentEnv, setCurrentEnv] = useState<Environment | null>(null);
@@ -1181,6 +1189,10 @@ export const App: React.FC = () => {
                 </div>
               </div>
             </div>
+          )}
+
+          {activeTab === 'admin_panel' && user?.role?.toUpperCase() === 'ADMIN' && (
+            <AdminPanelView />
           )}
         </main>
       </div>

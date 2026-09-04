@@ -65,6 +65,13 @@ async def trigger_execution(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
+    from app.core.kill_switch import SystemKillSwitchManager
+    if not SystemKillSwitchManager.is_allowed("flow_execution"):
+        raise HTTPException(
+            status_code=503,
+            detail="Flow execution is currently disabled by system administrator (Kill Switch Active)."
+        )
+
     correlation_id = f"corr-{uuid.uuid4().hex[:12]}"
     
     # Check agent version tag
@@ -721,6 +728,13 @@ def group_dataset_into_scenarios(
 
 @router.post("/matrix-job")
 async def start_matrix_job(req: MatrixJobRequest, db: AsyncSession = Depends(get_db)):
+    from app.core.kill_switch import SystemKillSwitchManager
+    if not SystemKillSwitchManager.is_allowed("flow_execution"):
+        raise HTTPException(
+            status_code=503,
+            detail="Flow and matrix execution is currently disabled by system administrator (Kill Switch Active)."
+        )
+
     import datetime
     import asyncio
     job_id = f"job_{uuid.uuid4().hex[:12]}"

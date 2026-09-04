@@ -8,7 +8,8 @@ import {
   ShieldCheck,
   FileUp,
   Bot,
-  LogOut
+  LogOut,
+  SlidersHorizontal
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -20,7 +21,8 @@ export type NavTab =
   | 'upload_document'
   | 'swarm_async'
   | 'regression'
-  | 'settings';
+  | 'settings'
+  | 'admin_panel';
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -120,20 +122,57 @@ export const Sidebar: React.FC<SidebarProps> = ({
             );
           })}
         </div>
+
+        {/* ADMINISTRATION Section (RBAC Protected: ADMIN role only) */}
+        {user?.role?.toUpperCase() === 'ADMIN' && (
+          <div className="space-y-1">
+            <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-purple-600 mb-2 flex items-center justify-between">
+              <span>ADMINISTRATION</span>
+              <span className="bg-purple-100 text-purple-700 text-[9px] px-1.5 py-0.5 rounded font-bold border border-purple-200">
+                ADMIN
+              </span>
+            </p>
+            <button
+              onClick={() => onTabChange('admin_panel')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                activeTab === 'admin_panel'
+                  ? 'bg-purple-950 text-white shadow-xs'
+                  : 'text-purple-700 hover:text-purple-900 hover:bg-purple-50'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <SlidersHorizontal className={`w-4 h-4 ${activeTab === 'admin_panel' ? 'text-purple-300' : 'text-purple-600'}`} />
+                <span>Admin Panel</span>
+              </div>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="System Monitor Live" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* User / Org Footer & Sign Out */}
       <div className="pt-4 border-t border-slate-200 px-2 flex items-center justify-between text-xs text-slate-600">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+          <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shadow-xs shrink-0 ${
+            user?.role?.toUpperCase() === 'ADMIN' ? 'bg-purple-700 text-white' : 'bg-indigo-600 text-white'
+          }`}>
             {user?.full_name?.charAt(0).toUpperCase() || 'U'}
           </div>
           <div className="min-w-0">
             <div className="text-xs font-bold text-slate-900 leading-tight truncate">
-              {user?.full_name || 'QA Engineer'}
+              {user?.full_name || (user?.role?.toUpperCase() === 'ADMIN' ? 'Administrator' : 'QA Engineer')}
             </div>
-            <div className="text-[10px] text-slate-500 font-medium truncate">
-              {user?.role || user?.email || 'Authenticated'}
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[10px] text-slate-500 font-medium truncate max-w-[90px]">
+                {user?.email || 'Authenticated'}
+              </span>
+              <span className={`text-[9px] font-black uppercase px-1 py-0.2 rounded border ${
+                user?.role?.toUpperCase() === 'ADMIN'
+                  ? 'bg-purple-50 text-purple-700 border-purple-200'
+                  : 'bg-slate-100 text-slate-600 border-slate-200'
+              }`}>
+                {user?.role?.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'QA'}
+              </span>
             </div>
           </div>
         </div>

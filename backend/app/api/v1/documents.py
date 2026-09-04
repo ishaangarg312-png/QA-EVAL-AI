@@ -63,6 +63,13 @@ async def upload_document(
     Accepts document upload (PDF, Word, CSV, Excel, PPTX).
     Saves file to disk and returns file_name, attachment_id, and persistent blob_url.
     """
+    from app.core.kill_switch import SystemKillSwitchManager
+    if not SystemKillSwitchManager.is_allowed("document_upload"):
+        raise HTTPException(
+            status_code=503,
+            detail="Document upload is currently disabled by system administrator (Kill Switch Active)."
+        )
+
     content = await file.read()
     file_size = len(content)
     att_id = custom_id or f"att_{uuid.uuid4().hex[:12]}"

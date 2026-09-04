@@ -31,9 +31,24 @@ class User(Base):
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), default=UserRole.QA_ENGINEER, nullable=False)
     is_active = Column(String(10), default="true")
+    last_active_at = Column(DateTime(timezone=True), nullable=True)
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    last_ip = Column(String(64), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     organization = relationship("Organization", back_populates="users")
+
+
+class SystemKillSwitch(Base):
+    __tablename__ = "system_kill_switches"
+
+    key = Column(String(64), primary_key=True)  # e.g., flow_execution, queue_processing, document_upload, user_registration, emergency_kill
+    name = Column(String(100), nullable=False)
+    description = Column(String(255), nullable=True)
+    is_enabled = Column(String(10), default="true", nullable=False)  # "true" or "false"
+    reason = Column(String(255), nullable=True)
+    updated_by = Column(String(255), nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
 
 class AuditLog(Base):

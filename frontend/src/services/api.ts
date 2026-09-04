@@ -18,7 +18,10 @@ import {
   TokenResponse,
   QueueStats,
   QueueTaskItem,
-  SwarmMessage
+  SwarmMessage,
+  AdminUser,
+  SystemMetrics,
+  KillSwitchItem
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -527,6 +530,71 @@ export const api = {
 
   clearProjectSwarmMessages: async (projectId: string): Promise<any> => {
     const res = await apiClient.delete(`/executions/projects/${projectId}/swarm-messages`);
+    return res.data;
+  },
+
+  // ==========================================
+  // Role-Based Access Control & Admin API
+  // ==========================================
+  getAdminUsers: async (): Promise<{
+    total: number;
+    online_count: number;
+    admin_count: number;
+    qa_count: number;
+    users: AdminUser[];
+  }> => {
+    const res = await apiClient.get('/admin/users');
+    return res.data;
+  },
+
+  updateUserRole: async (userId: string, role: 'ADMIN' | 'QA'): Promise<{
+    id: string;
+    email: string;
+    full_name: string;
+    role: 'ADMIN' | 'QA';
+    message: string;
+  }> => {
+    const res = await apiClient.put(`/admin/users/${userId}/role`, { role });
+    return res.data;
+  },
+
+  updateUserStatus: async (userId: string, is_active: boolean): Promise<{
+    id: string;
+    email: string;
+    is_active: boolean;
+    message: string;
+  }> => {
+    const res = await apiClient.put(`/admin/users/${userId}/status`, { is_active });
+    return res.data;
+  },
+
+  getSystemMetrics: async (): Promise<SystemMetrics> => {
+    const res = await apiClient.get<SystemMetrics>('/admin/system/metrics');
+    return res.data;
+  },
+
+  getKillSwitches: async (): Promise<{ total: number; switches: KillSwitchItem[] }> => {
+    const res = await apiClient.get('/admin/kill-switches');
+    return res.data;
+  },
+
+  toggleKillSwitch: async (featureKey: string, is_enabled: boolean, reason?: string): Promise<{
+    status: string;
+    key: string;
+    is_enabled: boolean;
+    message: string;
+  }> => {
+    const res = await apiClient.put(`/admin/kill-switches/${featureKey}`, { is_enabled, reason });
+    return res.data;
+  },
+
+  triggerEmergencyKill: async (reason?: string): Promise<{
+    status: string;
+    message: string;
+    disabled_switches: string[];
+    halted_at: string;
+  }> => {
+    const res = await apiClient.post('/admin/emergency-kill', { reason });
     return res.data;
   },
 };

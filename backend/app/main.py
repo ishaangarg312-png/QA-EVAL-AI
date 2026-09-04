@@ -33,7 +33,9 @@ from app.api.v1 import (
     demo,
     documents,
     queue,
+    admin,
 )
+from app.core.kill_switch import SystemKillSwitchManager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -65,12 +67,22 @@ async def lifespan(app: FastAPI):
             "ALTER TABLE queue_tasks ADD COLUMN result JSON",
             "ALTER TABLE queue_tasks ADD COLUMN duration_ms FLOAT",
             "ALTER TABLE queue_tasks ADD COLUMN completed_at TIMESTAMP",
+            "ALTER TABLE users ADD COLUMN last_active_at TIMESTAMP",
+            "ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP",
+            "ALTER TABLE users ADD COLUMN last_ip VARCHAR(64)",
         ]:
             try:
                 await conn.execute(text(col_stmt))
             except Exception:
                 pass
     logger.info("Database schemas initialized and migrated.")
+
+    # Initialize dynamic kill switches from database
+    try:
+        await SystemKillSwitchManager.initialize()
+        logger.info("System kill switches initialized.")
+    except Exception as ks_err:
+        logger.warning(f"Error initializing system kill switches: {ks_err}")
 
     # Crash recovery: Detect and checkpoint any jobs that were interrupted by server restart/crash
     try:
@@ -224,6 +236,7 @@ app.include_router(quality_gates.router, prefix=settings.API_V1_STR, dependencie
 app.include_router(demo.router, prefix=settings.API_V1_STR, dependencies=auth_deps)
 app.include_router(documents.router, prefix=settings.API_V1_STR, dependencies=auth_deps)
 app.include_router(queue.router, prefix=settings.API_V1_STR, dependencies=auth_deps)
+app.include_router(admin.router, prefix=settings.API_V1_STR, dependencies=auth_deps)
 
 @app.get("/health", tags=["Health"])
 async def health_check():

@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'QA_LEAD' | 'QA_ENGINEER' | 'VIEWER';
+export type UserRole = 'ADMIN' | 'QA' | 'QA_LEAD' | 'QA_ENGINEER' | 'VIEWER';
 export type EnvironmentType = 'DEV' | 'QA' | 'UAT' | 'STAGING' | 'PRODUCTION';
 export type AgentType = 'REST_API' | 'OPENAI' | 'AZURE_OPENAI' | 'ANTHROPIC' | 'CUSTOM' | 'MCP';
 export type NodeType =
@@ -79,6 +79,67 @@ export interface TokenResponse {
   full_name?: string;
   role: UserRole;
   organization_id: string;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  full_name: string;
+  role: 'ADMIN' | 'QA';
+  raw_role: string;
+  is_active: boolean;
+  last_active_at: string | null;
+  last_login_at: string | null;
+  last_ip: string | null;
+  created_at: string | null;
+  is_online: boolean;
+}
+
+export interface SystemMetrics {
+  timestamp: string;
+  hostname: string;
+  platform: string;
+  python_version: string;
+  uptime_seconds: number;
+  cpu: {
+    usage_percent: number;
+    core_count: number;
+    logical_cpu_count: number;
+    load_avg_1m: number;
+    load_avg_5m: number;
+    load_avg_15m: number;
+  };
+  memory: {
+    total_mb: number;
+    available_mb: number;
+    used_mb: number;
+    percent: number;
+  };
+  disk: {
+    total_gb: number;
+    used_gb: number;
+    free_gb: number;
+    percent: number;
+  };
+  aws_ec2?: {
+    is_ec2: boolean;
+    instance_id?: string;
+    instance_type?: string;
+    region?: string;
+    availability_zone?: string;
+    public_ip?: string;
+    private_ip?: string;
+  };
+}
+
+export interface KillSwitchItem {
+  key: string;
+  name: string;
+  description: string;
+  is_enabled: boolean;
+  reason?: string | null;
+  updated_by?: string | null;
+  updated_at?: string | null;
 }
 
 export interface Environment {

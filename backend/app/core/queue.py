@@ -188,6 +188,10 @@ class TaskQueueEngine:
     @classmethod
     async def claim_next_task(cls, worker_id: str) -> Optional[Dict[str, Any]]:
         """Atomically leases the next available or stale-orphaned task without race conditions."""
+        from app.core.kill_switch import SystemKillSwitchManager
+        if not SystemKillSwitchManager.is_allowed("queue_processing"):
+            return None
+
         async with cls._get_claim_lock():
             for _attempt in range(5):
                 now = datetime.datetime.now(timezone.utc)
