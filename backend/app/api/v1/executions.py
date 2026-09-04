@@ -849,13 +849,9 @@ async def start_matrix_job(req: MatrixJobRequest, db: AsyncSession = Depends(get
             }
         )
 
-    # Check if external standalone workers are handling the queue
     stats = await TaskQueueEngine.get_queue_stats()
     has_external_workers = any(not w["worker_id"].startswith("embedded-") for w in stats.get("workers", []))
-
-    if not has_external_workers:
-        # Launch fallback asynchronous worker with parallel waves
-        asyncio.create_task(_run_backend_matrix_worker(job_id, waves if waves else [[n] for n in nodes], grouped_scenarios, req.project_id, req.environment_id, wf_id, nodes=ordered_nodes, strategy=req.strategy, edges=edges))
+    print(f"[Matrix] Enqueued {len(grouped_scenarios)} scenario(s) for job {job_id} into distributed task queue.")
 
     return {
         "job_id": job_id,
@@ -1024,7 +1020,7 @@ async def get_matrix_job_status(job_id: str):
                         step_dict = {st.node_key: st for st in steps}
                         
                         node_list = sc.get("nodeResults") or []
-                        running_marked = False
+                        running_marked = any(n.get("status") == "RUNNING" for n in node_list)
                         for idx, nr in enumerate(node_list):
                             nk = nr.get("nodeKey")
                             if nk in step_dict:
@@ -1040,18 +1036,23 @@ async def get_matrix_job_status(job_id: str):
                                     nr["status"] = "FAILED"
                                     nr["durationMs"] = st_obj.duration_ms
                             else:
-                                # If any subsequent node in this scenario already executed, this node was SKIPPED by condition
-                                later_executed = any(
-                                    node_list[later_idx].get("nodeKey") in step_dict 
-                                    for later_idx in range(idx + 1, len(node_list))
-                                )
-                                if later_executed:
-                                    nr["status"] = "SKIPPED"
-                                    nr["statusCode"] = "SKIPPED"
-                                    nr["durationMs"] = 0
-                                elif sc["status"] == "RUNNING" and not running_marked and nr.get("status") == "PENDING":
-                                    nr["status"] = "RUNNING"
-                                    running_marked = True
+                                if sc["status"] == "RUNNING":
+                                    if nr.get("status") == "RUNNING":
+                                        pass
+                                    elif not running_marked and nr.get("status") == "PENDING":
+                                        nr["status"] = "RUNNING"
+                                        # Also mark all other nodes in the same parallel wave as RUNNING
+                                        job_waves = job.get("waves")
+                                        if not job_waves and job.get("nodes"):
+                                            job_waves = compute_dag_waves(job.get("nodes", []), job.get("edges", []))
+                                        if job_waves:
+                                            target_wave = next((w for w in job_waves if any(n.get("node_key") == nk for n in w)), None)
+                                            if target_wave:
+                                                wave_keys = {n.get("node_key") for n in target_wave}
+                                                for other_nr in node_list:
+                                                    if other_nr.get("nodeKey") in wave_keys and other_nr.get("nodeKey") not in step_dict:
+                                                        other_nr["status"] = "RUNNING"
+                                        running_marked = True
 
                 completed_count = sum(1 for sc in sc_results if sc.get("status") in ("SUCCESS", "FAILED"))
                 job["completed_scenarios"] = completed_count

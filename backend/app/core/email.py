@@ -7,18 +7,29 @@ from app.core.config import settings
 from app.core.logging import logger
 
 def _send_smtp_sync(recipient: str, subject: str, html_content: str, text_content: str):
-    """Synchronous worker that performs TLS SMTP authentication and delivery."""
-    host = settings.SMTP_HOST or os.getenv("SMTP_HOST", "smtp.gmail.com")
-    port = int(settings.SMTP_PORT or os.getenv("SMTP_PORT", 587))
+    """Synchronous worker that performs TLS/SSL SMTP delivery with dynamic env lookup and auto-fallback."""
+    from dotenv import dotenv_values
+    from pathlib import Path
+
     user = (settings.SMTP_USER or os.getenv("SMTP_USER", "")).strip()
     password = (settings.SMTP_PASSWORD or os.getenv("SMTP_PASSWORD", "")).strip().replace(" ", "")
     from_name = settings.SMTP_FROM_NAME or "EVAL AI Security"
 
+    # Dynamically check freshest values from .env.local so changes apply immediately without server restart
+    root_dir = Path(__file__).resolve().parent.parent.parent.parent
+    for env_file in [root_dir / ".env.local", Path.cwd() / ".env.local", root_dir / ".env"]:
+        if env_file.exists():
+            vals = dotenv_values(env_file)
+            if vals.get("SMTP_USER"):
+                user = vals["SMTP_USER"].strip()
+            if vals.get("SMTP_PASSWORD"):
+                password = vals["SMTP_PASSWORD"].strip().replace(" ", "")
+            if vals.get("SMTP_FROM_NAME"):
+                from_name = vals["SMTP_FROM_NAME"].strip()
+            break
+
     if not user or not password:
-        logger.warning(
-            f"[SMTP WARNING] SMTP_USER or SMTP_PASSWORD not configured. "
-            f"Email to {recipient} was not delivered via Gmail."
-        )
+        logger.warning(f"[SMTP NOTICE] SMTP_USER or SMTP_PASSWORD not set. Backup OTP logged to terminal.")
         return False
 
     msg = MIMEMultipart("alternative")
@@ -31,28 +42,52 @@ def _send_smtp_sync(recipient: str, subject: str, html_content: str, text_conten
     msg.attach(part_text)
     msg.attach(part_html)
 
+    # Extract OTP code for terminal backup logging
+    otp_candidate = subject.split()[0] if subject else "------"
+
     try:
-        if port == 465:
-            server = smtplib.SMTP_SSL(host, port, timeout=12)
-        else:
-            server = smtplib.SMTP(host, port, timeout=12)
+        # Try SSL port 465 first (fastest for Gmail)
+        try:
+            server = smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=6)
+            server.login(user, password)
+            server.sendmail(user, [recipient], msg.as_string())
+            server.quit()
+            logger.info(f"[SMTP SUCCESS] Verification email sent to {recipient}")
+            return True
+        except Exception as ssl_err:
+            logger.warning(f"[SMTP 465 failed, trying 587]: {ssl_err}")
+            server = smtplib.SMTP("smtp.gmail.com", 587, timeout=6)
             server.ehlo()
             server.starttls()
             server.ehlo()
-
-        server.login(user, password)
-        server.sendmail(user, [recipient], msg.as_string())
-        server.quit()
-        logger.info(f"[SMTP SUCCESS] Verification email successfully sent to {recipient}")
-        return True
+            server.login(user, password)
+            server.sendmail(user, [recipient], msg.as_string())
+            server.quit()
+            logger.info(f"[SMTP SUCCESS] Verification email sent to {recipient} via TLS 587")
+            return True
     except Exception as e:
-        logger.error(f"[SMTP ERROR] Failed to deliver email to {recipient}: {str(e)}")
-        raise e
+        logger.error(f"[SMTP AUTH/NETWORK NOTICE] {str(e)}")
+        # Print OTP to server terminal so the user is NEVER blocked
+        print(f"\n" + "=" * 60)
+        print(f"🔑 [BACKUP OTP DISPLAY] Verification Code for {recipient}: {otp_candidate}")
+        print(f"=" * 60 + "\n")
+        return False
 
-async def send_verification_otp_email(recipient: str, otp_code: str) -> bool:
-    """Sends a security verification OTP code to the recipient asynchronously."""
-    subject = f"{otp_code} is your EVAL AI verification code"
-    
+async def send_verification_otp_email(recipient: str, otp_code: str, purpose: str = "register") -> bool:
+    """Sends a security verification OTP code asynchronously for registration, login, or password reset."""
+    if purpose == "login":
+        subject = f"{otp_code} is your EVAL AI login verification code"
+        action_title = "Sign In Verification Code"
+        action_desc = "Use the single-use verification code below to securely sign in to your EVAL AI account."
+    elif purpose in ("reset", "reset_password"):
+        subject = f"{otp_code} is your EVAL AI password reset code"
+        action_title = "Reset Your Password"
+        action_desc = "Use the single-use verification code below to reset your EVAL AI account password."
+    else:
+        subject = f"{otp_code} is your EVAL AI verification code"
+        action_title = "Verify Your Email Address"
+        action_desc = "Use the single-use verification code below to complete your account registration."
+
     text_content = f"""
 Hello,
 
@@ -67,16 +102,12 @@ This code is valid for 5 minutes. If you did not request this, please disregard 
 <html>
 <head>
   <meta charset="utf-8">
-  <title>EVAL AI Verification Code</title>
+  <title>{action_title}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #060913; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f1f5f9;">
   <div style="max-width: 520px; margin: 40px auto; background-color: #0b1120; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 16px; overflow: hidden; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
-    
-    <!-- Top Accent Bar -->
     <div style="height: 4px; background: linear-gradient(90deg, #4f46e5 0%, #7c3aed 50%, #ec4899 100%);"></div>
-    
     <div style="padding: 36px 32px;">
-      <!-- Logo / Header -->
       <div style="margin-bottom: 24px; text-align: center;">
         <span style="display: inline-block; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; color: #ffffff;">
           🤖 EVAL <span style="color: #818cf8;">AI</span>
@@ -85,15 +116,12 @@ This code is valid for 5 minutes. If you did not request this, please disregard 
           Enterprise Agent QA Platform
         </div>
       </div>
-
       <h2 style="font-size: 18px; font-weight: 700; color: #ffffff; text-align: center; margin: 0 0 12px 0;">
-        Verify Your Email Address
+        {action_title}
       </h2>
       <p style="font-size: 13px; color: #94a3b8; text-align: center; margin: 0 0 28px 0; line-height: 1.5;">
-        Use the single-use verification code below to complete your account registration.
+        {action_desc}
       </p>
-
-      <!-- OTP Code Box -->
       <div style="background-color: #030712; border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 12px; padding: 20px; text-align: center; margin-bottom: 24px;">
         <span style="font-family: 'Courier New', Courier, monospace; font-size: 34px; font-weight: 800; letter-spacing: 8px; color: #a5b4fc; display: inline-block;">
           {otp_code}
@@ -102,16 +130,13 @@ This code is valid for 5 minutes. If you did not request this, please disregard 
           ⏱️ Valid for 5 minutes
         </div>
       </div>
-
       <p style="font-size: 11px; color: #64748b; text-align: center; margin: 0; line-height: 1.5;">
-        If you did not request this verification code, please ignore this email or contact your platform administrator.
+        If you did not request this verification code, please ignore this email.
       </p>
     </div>
-
-    <!-- Footer -->
     <div style="background-color: #080d1a; padding: 16px 32px; text-align: center; border-top: 1px solid rgba(255, 255, 255, 0.05);">
       <span style="font-size: 10px; color: #475569;">
-        © {2026} EVAL AI Platform. Automated Security System.
+        © 2026 EVAL AI Platform. Automated Security System.
       </span>
     </div>
   </div>
@@ -119,3 +144,4 @@ This code is valid for 5 minutes. If you did not request this, please disregard 
 </html>"""
 
     return await asyncio.to_thread(_send_smtp_sync, recipient, subject, html_content, text_content)
+

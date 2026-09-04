@@ -127,13 +127,7 @@ async def lifespan(app: FastAPI):
         while embedded_worker_running:
             try:
                 stats = await TaskQueueEngine.get_queue_stats()
-                external_workers = [w for w in stats.get("workers", []) if not w["worker_id"].startswith("embedded-")]
                 desired = TaskQueueEngine.get_desired_concurrency()
-
-                # If external standalone workers are online, yield execution to them
-                if len(external_workers) > 0:
-                    await asyncio.sleep(2.0)
-                    continue
 
                 # Register/update embedded worker presence
                 await TaskQueueEngine.register_worker(

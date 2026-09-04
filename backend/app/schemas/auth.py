@@ -19,6 +19,18 @@ class TokenData(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    otp: Optional[str] = None
+
+class SendOtpRequest(BaseModel):
+    email: EmailStr
+    purpose: Optional[str] = "register"  # "register" | "login" | "reset_password"
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: str
+    new_password: str
+    confirm_password: str
+
 
 class UserCreate(BaseModel):
     email: EmailStr

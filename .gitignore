@@ -52,6 +52,8 @@ qa_platform.db
 frontend/node_modules/
 node_modules/
 # frontend/dist/ (included for deployment)
+!frontend/dist/
+!frontend/dist/**
 frontend/.cache/
 frontend/dist-ssr/
 frontend/*.local

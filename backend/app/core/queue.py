@@ -1,3 +1,4 @@
+import asyncio
 import datetime
 from datetime import timezone
 from typing import Optional, Dict, Any, List
@@ -6,12 +7,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import AsyncSessionLocal
 from app.models.queue import QueueTask, WorkerHeartbeat
 
-STALE_HEARTBEAT_SECONDS = 300
+STALE_HEARTBEAT_SECONDS = 20
 
 class TaskQueueEngine:
     """Zero-dependency, database-backed distributed task queue broker."""
 
     _desired_concurrency: int = 2
+    _claim_lock: Optional[asyncio.Lock] = None
+
+    @classmethod
+    def _get_claim_lock(cls) -> asyncio.Lock:
+        if cls._claim_lock is None:
+            cls._claim_lock = asyncio.Lock()
+        return cls._claim_lock
 
     @classmethod
     def get_desired_concurrency(cls) -> int:
@@ -72,61 +80,79 @@ class TaskQueueEngine:
             await session.commit()
             return len(scenarios)
 
-    @staticmethod
-    async def claim_next_task(worker_id: str) -> Optional[Dict[str, Any]]:
-        """Atomically leases the next available or stale-orphaned task."""
-        now = datetime.datetime.now(timezone.utc)
-        stale_threshold = now - datetime.timedelta(seconds=STALE_HEARTBEAT_SECONDS)
+    @classmethod
+    async def claim_next_task(cls, worker_id: str) -> Optional[Dict[str, Any]]:
+        """Atomically leases the next available or stale-orphaned task without race conditions."""
+        async with cls._get_claim_lock():
+            for _attempt in range(5):
+                now = datetime.datetime.now(timezone.utc)
+                stale_threshold = now - datetime.timedelta(seconds=STALE_HEARTBEAT_SECONDS)
 
-        async with AsyncSessionLocal() as session:
-            # 1. Find highest priority task, requiring parent job (if any) to be RUNNING
-            from app.models.execution import MatrixExecutionJob
-            stmt = (
-                select(QueueTask)
-                .join(MatrixExecutionJob, QueueTask.job_id == MatrixExecutionJob.id, isouter=True)
-                .where(
-                    and_(
-                        or_(
-                            QueueTask.job_id == None,
-                            MatrixExecutionJob.status == "RUNNING"
-                        ),
-                        or_(
-                            QueueTask.status == "QUEUED",
+                async with AsyncSessionLocal() as session:
+                    # 1. Find highest priority task, requiring parent job (if any) to be RUNNING
+                    from app.models.execution import MatrixExecutionJob
+                    stmt = (
+                        select(QueueTask)
+                        .join(MatrixExecutionJob, QueueTask.job_id == MatrixExecutionJob.id, isouter=True)
+                        .where(
                             and_(
-                                QueueTask.status.in_(["CLAIMED", "RUNNING"]),
                                 or_(
-                                    QueueTask.heartbeat_at == None,
-                                    QueueTask.heartbeat_at < stale_threshold
+                                    QueueTask.job_id == None,
+                                    MatrixExecutionJob.status == "RUNNING"
+                                ),
+                                or_(
+                                    QueueTask.status == "QUEUED",
+                                    and_(
+                                        QueueTask.status.in_(["CLAIMED", "RUNNING"]),
+                                        or_(
+                                            QueueTask.heartbeat_at == None,
+                                            QueueTask.heartbeat_at < stale_threshold
+                                        )
+                                    )
                                 )
                             )
                         )
+                        .order_by(QueueTask.priority.desc(), QueueTask.created_at.asc())
+                        .limit(1)
                     )
-                )
-                .order_by(QueueTask.priority.desc(), QueueTask.created_at.asc())
-                .limit(1)
-            )
-            res = await session.execute(stmt)
-            task = res.scalar_one_or_none()
-            if not task:
-                return None
+                    res = await session.execute(stmt)
+                    task = res.scalar_one_or_none()
+                    if not task:
+                        return None
 
-            # 2. Acquire lease
-            task.status = "RUNNING"
-            task.worker_id = worker_id
-            task.leased_at = now
-            task.heartbeat_at = now
-            task.attempts = (task.attempts or 0) + 1
-            await session.commit()
+                    candidate_id = task.id
+                    candidate_status = task.status
+                    current_attempts = task.attempts or 0
 
-            return {
-                "id": task.id,
-                "job_id": task.job_id,
-                "scenario_index": task.scenario_index,
-                "task_type": task.task_type,
-                "payload": task.payload,
-                "attempts": task.attempts,
-                "max_retries": task.max_retries
-            }
+                    # 2. Acquire atomic lease via conditional UPDATE so another worker process cannot race
+                    up_stmt = (
+                        update(QueueTask)
+                        .where(
+                            QueueTask.id == candidate_id,
+                            QueueTask.status == candidate_status
+                        )
+                        .values(
+                            status="RUNNING",
+                            worker_id=worker_id,
+                            leased_at=now,
+                            heartbeat_at=now,
+                            attempts=current_attempts + 1
+                        )
+                    )
+                    up_res = await session.execute(up_stmt)
+                    await session.commit()
+
+                    if up_res.rowcount > 0:
+                        return {
+                            "id": task.id,
+                            "job_id": task.job_id,
+                            "scenario_index": task.scenario_index,
+                            "task_type": task.task_type,
+                            "payload": task.payload,
+                            "attempts": current_attempts + 1,
+                            "max_retries": task.max_retries
+                        }
+            return None
 
     @staticmethod
     async def record_task_heartbeat(task_id: str, worker_id: str) -> bool:
@@ -264,6 +290,18 @@ class TaskQueueEngine:
             stmt = stmt.group_by(QueueTask.status)
             res = await session.execute(stmt)
             status_counts = {row[0]: row[1] for row in res.all()}
+
+            # Auto-offline stale workers
+            stale_stmt = (
+                update(WorkerHeartbeat)
+                .where(
+                    WorkerHeartbeat.status == "ONLINE",
+                    WorkerHeartbeat.last_seen_at < active_threshold
+                )
+                .values(status="OFFLINE", active_tasks=0)
+            )
+            await session.execute(stale_stmt)
+            await session.commit()
 
             # Active workers
             w_stmt = (

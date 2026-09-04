@@ -74,18 +74,18 @@ class DistributedTaskWorker:
                     continue
 
                 self.active_tasks_count += 1
-                task_id = task["id"]
-                job_id = task["job_id"]
-                sc_idx = task.get("scenario_index", 0)
-                payload = task.get("payload", {})
-
-                print(f"[{slot_tag}] [CLAIM] Task {task_id[:8]}... (Job: {job_id[:12]}, Scenario #{sc_idx})")
-
-                stop_heartbeat = asyncio.Event()
-                hb_coro = asyncio.create_task(self._task_heartbeat_loop(task_id, stop_heartbeat))
-
-                start_time = time.perf_counter()
                 try:
+                    task_id = task["id"]
+                    job_id = task["job_id"]
+                    sc_idx = task.get("scenario_index", 0)
+                    payload = task.get("payload", {})
+
+                    print(f"[{slot_tag}] [CLAIM] Task {task_id[:8]}... (Job: {job_id[:12]}, Scenario #{sc_idx})")
+
+                    stop_heartbeat = asyncio.Event()
+                    hb_coro = asyncio.create_task(self._task_heartbeat_loop(task_id, stop_heartbeat))
+
+                    start_time = time.perf_counter()
                     # Execute scenario
                     scenario = payload.get("scenario") or payload
                     waves = payload.get("waves", [])

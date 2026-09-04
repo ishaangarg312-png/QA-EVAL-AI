@@ -1,4 +1,5 @@
 import os
+import asyncio
 import uuid
 from typing import Optional
 from pydantic import BaseModel
@@ -11,7 +12,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.core.security import verify_password, get_password_hash, create_access_token, decode_access_token
 from app.models.organization import User, Organization
-from app.schemas.auth import LoginRequest, Token, UserCreate, UserResponse
+from app.schemas.auth import LoginRequest, Token, UserCreate, UserResponse, SendOtpRequest, ResetPasswordRequest
 from app.domain.types import UserRole
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -70,24 +71,36 @@ ALLOWED_SIGNUP_EMAILS = {
     "mv9646@gmail.com"
 }
 
-# In-memory OTP storage: { email: { "otp": "...", "expires_at": float, "last_sent_at": float } }
+# In-memory OTP storage: { "purpose:email": { "otp": "...", "expires_at": float, "last_sent_at": float } }
 otp_store: Dict[str, Dict[str, Any]] = {}
 
-class SendOtpRequest(BaseModel):
-    email: str
-
 @router.post("/send-otp")
-async def send_registration_otp(payload: SendOtpRequest):
-    """Generates and delivers a 6-digit OTP to allowed registration emails via Gmail SMTP."""
+async def send_otp(payload: SendOtpRequest, db: AsyncSession = Depends(get_db)):
+    """Generates and delivers a 6-digit OTP via Gmail SMTP for registration, login, or password reset."""
     email_clean = payload.email.strip().lower()
-    if email_clean not in ALLOWED_SIGNUP_EMAILS:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Website in development. Coming soon"
-        )
-    
+    purpose = (payload.purpose or "register").strip().lower()
+    if purpose not in ("register", "login", "reset", "reset_password"):
+        purpose = "register"
+
+    if purpose == "register":
+        if email_clean not in ALLOWED_SIGNUP_EMAILS:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Website in development. Coming soon"
+            )
+    elif purpose in ("login", "reset", "reset_password"):
+        stmt = select(User).where(User.email == email_clean)
+        res = await db.execute(stmt)
+        user = res.scalar_one_or_none()
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No account found with this email address."
+            )
+
+    store_key = f"{purpose}:{email_clean}"
     now = time.time()
-    existing = otp_store.get(email_clean)
+    existing = otp_store.get(store_key) or otp_store.get(email_clean)
     if existing:
         elapsed = now - existing.get("last_sent_at", 0)
         if elapsed < 30:
@@ -99,25 +112,34 @@ async def send_registration_otp(payload: SendOtpRequest):
 
     # Generate secure 6-digit numeric OTP
     otp_code = f"{random.randint(100000, 999999)}"
-    otp_store[email_clean] = {
+    otp_data = {
         "otp": otp_code,
         "expires_at": now + 300,  # 5 minutes
         "last_sent_at": now
     }
+    otp_store[store_key] = otp_data
+    otp_store[email_clean] = otp_data  # fallback
 
-    # Dispatch via Gmail SMTP
-    try:
-        await send_verification_otp_email(email_clean, otp_code)
-    except Exception as e:
-        logger.error(f"Failed to send email via SMTP: {str(e)}")
-        # Allow dev fallback if user has not yet configured SMTP_PASSWORD
-        logger.info(f"[DEV FALLBACK OTP] Verification code for {email_clean} is: {otp_code}")
+    # Deliver OTP via Gmail SMTP directly (awaited so delivery is verified)
+    delivery_success = await send_verification_otp_email(email_clean, otp_code, purpose=purpose)
 
-    return {
-        "status": "success",
-        "message": f"Verification code sent to {email_clean}",
-        "cooldown_seconds": 30
-    }
+    if delivery_success:
+        return {
+            "status": "success",
+            "message": f"Verification code sent to {email_clean}! Check your inbox.",
+            "delivered": True,
+            "cooldown_seconds": 30
+        }
+    else:
+        logger.warning(f"[SMTP FALLBACK] Email delivery to {email_clean} failed. Backup OTP: {otp_code}")
+        return {
+            "status": "warning",
+            "message": f"Verification code generated (check terminal or use code below): {otp_code}",
+            "delivered": False,
+            "backup_otp": otp_code,
+            "cooldown_seconds": 15
+        }
+
 
 @router.post("/register", response_model=UserResponse)
 async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
@@ -136,7 +158,8 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
         )
 
     now = time.time()
-    stored_data = otp_store.get(email_clean)
+    store_key = f"register:{email_clean}"
+    stored_data = otp_store.get(store_key) or otp_store.get(email_clean)
     if not stored_data:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -144,6 +167,7 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
         )
 
     if now > stored_data.get("expires_at", 0):
+        otp_store.pop(store_key, None)
         otp_store.pop(email_clean, None)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -157,6 +181,7 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
         )
 
     # Clean up OTP after successful validation
+    otp_store.pop(store_key, None)
     otp_store.pop(email_clean, None)
 
     # Check if user exists
@@ -216,7 +241,8 @@ async def custom_token_login(req: CustomTokenLoginRequest, db: AsyncSession = De
 
 @router.post("/login", response_model=Token)
 async def login(login_req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    stmt = select(User).where(User.email == login_req.email)
+    email_clean = login_req.email.strip().lower()
+    stmt = select(User).where(User.email == email_clean)
     res = await db.execute(stmt)
     user = res.scalar_one_or_none()
 
@@ -228,8 +254,46 @@ async def login(login_req: LoginRequest, db: AsyncSession = Depends(get_db)):
         admin_res = await db.execute(admin_stmt)
         user = admin_res.scalar_one_or_none()
 
-    if not user or (not is_custom_token_match and not verify_password(login_req.password, user.hashed_password)):
+    if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+    # If normal login (not master custom token), validate OTP first
+    if not is_custom_token_match:
+        if not login_req.otp or not login_req.otp.strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Verification code is required. Please click 'Send OTP' and enter the code."
+            )
+
+        now = time.time()
+        store_key = f"login:{email_clean}"
+        stored = otp_store.get(store_key) or otp_store.get(email_clean)
+        if not stored:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No active verification code found. Please click 'Send OTP'."
+            )
+        if now > stored.get("expires_at", 0):
+            otp_store.pop(store_key, None)
+            otp_store.pop(email_clean, None)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Verification code has expired. Please request a new code."
+            )
+        if login_req.otp.strip() != stored.get("otp"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid verification code. Please check your email and try again."
+            )
+
+    # Validate password
+    if not is_custom_token_match and not verify_password(login_req.password, user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
+
+    # Cleanup login OTP after both OTP and password succeed
+    if not is_custom_token_match:
+        otp_store.pop(store_key, None)
+        otp_store.pop(email_clean, None)
 
     token = create_access_token(data={
         "sub": user.id,
@@ -246,6 +310,85 @@ async def login(login_req: LoginRequest, db: AsyncSession = Depends(get_db)):
         role=user.role,
         organization_id=user.organization_id
     )
+
+@router.post("/forgot-password/send-otp")
+async def forgot_password_send_otp(payload: SendOtpRequest, db: AsyncSession = Depends(get_db)):
+    """Generates and delivers a password reset OTP to a registered user's email."""
+    payload.purpose = "reset_password"
+    return await send_otp(payload, db=db)
+
+@router.post("/forgot-password/reset")
+async def reset_password(req: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    """Validates OTP and sets a new password with confirmation matching."""
+    email_clean = req.email.strip().lower()
+
+    if req.new_password != req.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Passwords do not match. Please confirm your new password."
+        )
+    if len(req.new_password.strip()) < 6:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 6 characters long."
+        )
+    if not req.otp or not req.otp.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code is required. Please click 'Send OTP'."
+        )
+
+    stmt = select(User).where(User.email == email_clean)
+    res = await db.execute(stmt)
+    user = res.scalar_one_or_none()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No account found with this email address."
+        )
+
+    now = time.time()
+    store_key = f"reset_password:{email_clean}"
+    stored = (
+        otp_store.get(store_key)
+        or otp_store.get(f"reset:{email_clean}")
+        or otp_store.get(email_clean)
+    )
+    if not stored:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No active verification code found. Please click 'Send OTP'."
+        )
+    if now > stored.get("expires_at", 0):
+        otp_store.pop(store_key, None)
+        otp_store.pop(f"reset:{email_clean}", None)
+        otp_store.pop(email_clean, None)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verification code has expired. Please request a new code."
+        )
+    if req.otp.strip() != stored.get("otp"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid verification code. Please check your email and try again."
+        )
+
+    # Clean up OTP after success
+    otp_store.pop(store_key, None)
+    otp_store.pop(f"reset:{email_clean}", None)
+    otp_store.pop(email_clean, None)
+
+    # Hash new password and save
+    user.hashed_password = get_password_hash(req.new_password)
+    await db.commit()
+    await db.refresh(user)
+
+    logger.info(f"[AUTH] Password reset successfully for {email_clean}")
+    return {
+        "status": "success",
+        "message": "Password reset successfully! You can now log in with your new password."
+    }
+
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user(user: User = Depends(get_authenticated_user)):

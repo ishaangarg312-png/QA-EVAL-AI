@@ -112,31 +112,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>Project</span>
             </button>
           </div>
-
-          {/* Environment Badge */}
-          {currentProject && currentProject.environments && currentProject.environments.length > 0 && (
-            <div className="flex items-center gap-1.5">
-              <div className="relative flex items-center">
-                <select
-                  value={currentEnv?.id || ''}
-                  onChange={(e) => {
-                    const env = currentProject.environments.find((item) => item.id === e.target.value);
-                    if (env) onSelectEnv(env);
-                  }}
-                  className="bg-emerald-50/70 hover:bg-emerald-50 border border-emerald-200 text-[11px] font-mono font-bold text-emerald-800 rounded-xl px-2.5 py-1.5 focus:outline-none cursor-pointer appearance-none pr-7 shadow-xs"
-                >
-                  {currentProject.environments.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      ● {e.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-emerald-600">
-                  <ChevronDown className="w-3 h-3" />
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Right Controls: Gate Status & Action Button & User Profile */}
@@ -206,58 +181,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </div>
 
-          {/* Demo Simulations Dropdown */}
-          <div className="relative">
-            <button
-              onClick={() => setShowDemoMenu(!showDemoMenu)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold shadow-xs transition-all cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              <span>Simulate Scenarios</span>
-            </button>
-
-            {showDemoMenu && (
-              <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 z-50 space-y-1">
-                <button
-                  disabled={isRunningDemo}
-                  onClick={() => {
-                    setShowDemoMenu(false);
-                    onRunDemo('v1_full');
-                  }}
-                  className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-slate-50 text-xs text-slate-800 transition-colors cursor-pointer"
-                >
-                  <div className="font-bold text-slate-900">✈️ 11-Step Travel Booking (Pass)</div>
-                  <div className="text-[10px] text-slate-500">Prompt → API → HITL → Email → 3-Layer Eval</div>
-                </button>
-
-                <button
-                  disabled={isRunningDemo}
-                  onClick={() => {
-                    setShowDemoMenu(false);
-                    onRunDemo('v2_regressed');
-                  }}
-                  className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-rose-50 text-xs text-rose-700 transition-colors cursor-pointer"
-                >
-                  <div className="font-bold">⚠️ Regressed Agent v2 (RCA Failure)</div>
-                  <div className="text-[10px] text-rose-600">Triggers AI Root Cause Analysis engine</div>
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Primary Action: Run Test Workflow */}
-          <button
-            disabled={isRunningDemo}
-            onClick={onRunCurrentWorkflow}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition-all disabled:opacity-50 cursor-pointer"
-          >
-            {isRunningDemo ? (
-              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <Zap className="w-3.5 h-3.5" />
-            )}
-            <span>{isRunningDemo ? 'Running...' : 'Run Test'}</span>
-          </button>
 
           <div className="h-4 w-px bg-slate-200" />
 

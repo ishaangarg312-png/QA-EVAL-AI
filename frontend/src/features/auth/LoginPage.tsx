@@ -23,12 +23,14 @@ declare global {
 
 export const LoginPage: React.FC = () => {
   const { login, loginWithGoogle, register, googleClientId } = useAuth();
-  const [tab, setTab] = useState<'login' | 'register'>('login');
+  const [tab, setTab] = useState<'login' | 'register' | 'forgot'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [role, setRole] = useState<UserRole>('QA_ENGINEER');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -41,6 +43,15 @@ export const LoginPage: React.FC = () => {
   const [otpCooldown, setOtpCooldown] = useState(0);
 
   const googleBtnRef = useRef<HTMLDivElement>(null);
+
+  const switchTab = (nextTab: 'login' | 'register' | 'forgot') => {
+    setTab(nextTab);
+    setError(null);
+    setSuccessMsg(null);
+    setOtp('');
+    setOtpSent(false);
+    setConfirmPassword('');
+  };
 
   // Load official Google Identity Services script
   useEffect(() => {
@@ -108,7 +119,7 @@ export const LoginPage: React.FC = () => {
     'mv9646@gmail.com',
   ];
 
-  const handleSendOtp = async () => {
+  const handleSendOtp = async (overridePurpose?: 'register' | 'login' | 'reset_password') => {
     setError(null);
     setSuccessMsg(null);
     const emailClean = email.trim().toLowerCase();
@@ -116,16 +127,25 @@ export const LoginPage: React.FC = () => {
       setError('Please enter your email address first.');
       return;
     }
-    if (!ALLOWED_SIGNUP_EMAILS.includes(emailClean)) {
+    const currentPurpose =
+      overridePurpose || (tab === 'login' ? 'login' : tab === 'forgot' ? 'reset_password' : 'register');
+
+    if (currentPurpose === 'register' && !ALLOWED_SIGNUP_EMAILS.includes(emailClean)) {
       setError('Website in development. Coming soon');
       return;
     }
+
     setOtpSending(true);
     try {
-      const res = await api.sendOtp(emailClean);
+      const res = await api.sendOtp(emailClean, currentPurpose);
       setOtpSent(true);
       setOtpCooldown(res.cooldown_seconds || 30);
-      setSuccessMsg(`Verification code sent to ${emailClean}! Check your inbox.`);
+      if (res.backup_otp) {
+        setOtp(res.backup_otp);
+        setSuccessMsg(res.message || `Verification code: ${res.backup_otp}`);
+      } else {
+        setSuccessMsg(res.message || `Verification code sent to ${emailClean}! Check your inbox.`);
+      }
     } catch (err: any) {
       const msg = err.response?.data?.detail || err.message || 'Failed to send OTP';
       setError(msg);
@@ -138,9 +158,51 @@ export const LoginPage: React.FC = () => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
+    const emailClean = email.trim().toLowerCase();
+
+    if (!emailClean) {
+      setError('Please enter your email address.');
+      return;
+    }
+
+    if (tab === 'forgot') {
+      if (!otp.trim()) {
+        setError('Please enter the 6-digit verification code sent to your email.');
+        return;
+      }
+      if (!password || password.length < 6) {
+        setError('New password must be at least 6 characters long.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        setError('Passwords do not match. Please confirm your new password.');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const res = await api.resetPassword({
+          email: emailClean,
+          otp: otp.trim(),
+          new_password: password,
+          confirm_password: confirmPassword,
+        });
+        setSuccessMsg(res.message || 'Password reset successfully! Redirecting to Log In...');
+        setTimeout(() => {
+          switchTab('login');
+          setPassword('');
+          setConfirmPassword('');
+        }, 1500);
+      } catch (err: any) {
+        const msg = err.response?.data?.detail || err.message || 'Failed to reset password';
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
 
     if (tab === 'register') {
-      const emailClean = email.trim().toLowerCase();
       if (!ALLOWED_SIGNUP_EMAILS.includes(emailClean)) {
         setError('Website in development. Coming soon');
         return;
@@ -149,29 +211,47 @@ export const LoginPage: React.FC = () => {
         setError('Please enter the 6-digit verification code sent to your email.');
         return;
       }
-    }
-
-    setLoading(true);
-
-    try {
-      if (tab === 'login') {
-        await login(email.trim(), password);
-      } else {
+      setLoading(true);
+      try {
         await register({
-          email: email.trim(),
+          email: emailClean,
           full_name: fullName.trim(),
           password,
           role,
           otp: otp.trim(),
         });
         setSuccessMsg('Account created successfully! Logging you in...');
-        await login(email.trim(), password);
+        await login(emailClean, password, otp.trim());
+      } catch (err: any) {
+        const msg = err.response?.data?.detail || err.message || 'Authentication failed';
+        setError(msg);
+      } finally {
+        setLoading(false);
       }
-    } catch (err: any) {
-      const msg = err.response?.data?.detail || err.message || 'Authentication failed';
-      setError(msg);
-    } finally {
-      setLoading(false);
+      return;
+    }
+
+    if (tab === 'login') {
+      if (!otp.trim()) {
+        if (!otpSent) {
+          // If the user entered email & password and hit Sign In, auto-send the OTP!
+          await handleSendOtp('login');
+          return;
+        } else {
+          setError('Please enter the 6-digit verification code sent to your email.');
+          return;
+        }
+      }
+
+      setLoading(true);
+      try {
+        await login(emailClean, password, otp.trim());
+      } catch (err: any) {
+        const msg = err.response?.data?.detail || err.message || 'Authentication failed';
+        setError(msg);
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -410,11 +490,14 @@ export const LoginPage: React.FC = () => {
           {/* Header */}
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#ffffff', margin: 0 }}>
-              {tab === 'login' ? 'Log In' : 'Sign Up'}
+              {tab === 'login' ? 'Log In' : tab === 'register' ? 'Sign Up' : 'Reset Password'}
             </h2>
             <button
               type="button"
-              onClick={() => { setTab(tab === 'login' ? 'register' : 'login'); setError(null); }}
+              onClick={() => {
+                if (tab === 'login') switchTab('register');
+                else switchTab('login');
+              }}
               style={{
                 fontSize: '11px',
                 color: '#818cf8',
@@ -422,11 +505,20 @@ export const LoginPage: React.FC = () => {
                 border: 'none',
                 cursor: 'pointer',
                 fontWeight: 600,
+                transition: 'color 0.15s ease'
               }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#c7d2fe')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#818cf8')}
             >
-              {tab === 'login' ? 'Create Account' : 'Sign In'}
+              {tab === 'login' ? 'Create Account' : 'Back to Sign In'}
             </button>
           </div>
+
+          {tab === 'forgot' && (
+            <p style={{ fontSize: '11px', color: '#94a3b8', margin: '0', lineHeight: 1.4 }}>
+              Enter your registered email, verify with the OTP code, and enter your new password with confirmation.
+            </p>
+          )}
 
           {/* Feedback Messages */}
           {error && (
@@ -465,6 +557,10 @@ export const LoginPage: React.FC = () => {
 
           {/* Inputs Form */}
           <form onSubmit={handleSubmit} autoComplete="off" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            {/* Decoy fields to capture aggressive browser/Chrome autofill on localhost */}
+            <input type="text" style={{ display: 'none' }} tabIndex={-1} autoComplete="username" />
+            <input type="password" style={{ display: 'none' }} tabIndex={-1} autoComplete="current-password" />
+
             {tab === 'register' && (
               <>
                 <div className="figma-input-wrapper">
@@ -524,55 +620,51 @@ export const LoginPage: React.FC = () => {
                   className="figma-input"
                 />
               </div>
-              {tab === 'register' && (
-                <button
-                  type="button"
-                  onClick={handleSendOtp}
-                  disabled={otpSending || otpCooldown > 0}
-                  style={{
-                    height: '42px',
-                    padding: '0 14px',
-                    background: otpCooldown > 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(99, 102, 241, 0.2)',
-                    border: '1px solid',
-                    borderColor: otpCooldown > 0 ? 'rgba(255, 255, 255, 0.1)' : 'rgba(99, 102, 241, 0.4)',
-                    borderRadius: '10px',
-                    color: otpCooldown > 0 ? '#94a3b8' : '#c7d2fe',
-                    fontSize: '12px',
-                    fontWeight: 600,
-                    cursor: otpSending || otpCooldown > 0 ? 'not-allowed' : 'pointer',
-                    whiteSpace: 'nowrap',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  {otpSending ? 'Sending...' : otpCooldown > 0 ? `Resend (${otpCooldown}s)` : (otpSent ? 'Resend OTP' : 'Send OTP')}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => handleSendOtp()}
+                disabled={otpSending || otpCooldown > 0}
+                style={{
+                  height: '42px',
+                  padding: '0 14px',
+                  background: otpCooldown > 0 ? 'rgba(255, 255, 255, 0.05)' : 'rgba(99, 102, 241, 0.2)',
+                  border: '1px solid',
+                  borderColor: otpCooldown > 0 ? 'rgba(255, 255, 255, 0.1)' : 'rgba(99, 102, 241, 0.4)',
+                  borderRadius: '10px',
+                  color: otpCooldown > 0 ? '#94a3b8' : '#c7d2fe',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: otpSending || otpCooldown > 0 ? 'not-allowed' : 'pointer',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {otpSending ? 'Sending...' : otpCooldown > 0 ? `Resend (${otpCooldown}s)` : (otpSent ? 'Resend OTP' : 'Send OTP')}
+              </button>
             </div>
 
-            {/* Verification OTP Field (Shown only on Register) */}
-            {tab === 'register' && (
-              <div className="figma-input-wrapper">
-                <div className="figma-input-icon">
-                  <KeyRound size={16} color={otpSent ? '#818cf8' : '#64748b'} />
-                </div>
-                <input
-                  type="text"
-                  required
-                  maxLength={6}
-                  name="eval-auth-otp"
-                  autoComplete="one-time-code"
-                  value={otp}
-                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
-                  placeholder={otpSent ? "Enter 6-digit code from email" : "Click 'Send OTP' first"}
-                  className="figma-input"
-                  style={{
-                    letterSpacing: otp ? '4px' : 'normal',
-                    fontWeight: otp ? 700 : 400,
-                    borderColor: otpSent ? 'rgba(99, 102, 241, 0.4)' : undefined
-                  }}
-                />
+            {/* Verification OTP Field */}
+            <div className="figma-input-wrapper">
+              <div className="figma-input-icon">
+                <KeyRound size={16} color={otpSent ? '#818cf8' : '#64748b'} />
               </div>
-            )}
+              <input
+                type="text"
+                required
+                maxLength={6}
+                name="eval-auth-otp"
+                autoComplete="one-time-code"
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                placeholder={otpSent ? "Enter 6-digit code from email" : (tab === 'login' ? "Enter OTP (or click 'Send OTP')" : "Click 'Send OTP' first")}
+                className="figma-input"
+                style={{
+                  letterSpacing: otp ? '4px' : 'normal',
+                  fontWeight: otp ? 700 : 400,
+                  borderColor: otpSent ? 'rgba(99, 102, 241, 0.4)' : undefined
+                }}
+              />
+            </div>
 
             {/* Password Field */}
             <div className="figma-input-wrapper">
@@ -582,11 +674,13 @@ export const LoginPage: React.FC = () => {
               <input
                 type={showPassword ? 'text' : 'password'}
                 required
-                name="eval-auth-pass"
+                name="qa-auth-secret-key"
                 autoComplete="new-password"
+                data-lpignore="true"
+                data-1p-ignore="true"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Password"
+                placeholder={tab === 'forgot' ? 'New Password (min. 6 chars)' : 'Password'}
                 className="figma-input"
               />
               <button
@@ -613,7 +707,72 @@ export const LoginPage: React.FC = () => {
               </button>
             </div>
 
-            {/* Sign In CTA */}
+            {/* Confirm Password Field (Only on Forgot Password tab) */}
+            {tab === 'forgot' && (
+              <div className="figma-input-wrapper">
+                <div className="figma-input-icon">
+                  <Lock size={16} />
+                </div>
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  required
+                  name="eval-auth-confirm-pass"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm New Password"
+                  className="figma-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  tabIndex={-1}
+                  style={{
+                    position: 'absolute',
+                    right: '14px',
+                    background: 'transparent',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'color 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#cbd5e1')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#64748b')}
+                >
+                  {showConfirmPassword ? <Eye size={16} /> : <EyeOff size={16} />}
+                </button>
+              </div>
+            )}
+
+            {/* Forgot Password Link (Only on Login tab) */}
+            {tab === 'login' && (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-4px' }}>
+                <button
+                  type="button"
+                  onClick={() => switchTab('forgot')}
+                  style={{
+                    fontSize: '11px',
+                    color: '#818cf8',
+                    background: 'transparent',
+                    border: 'none',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    padding: '2px 0',
+                    transition: 'color 0.15s ease'
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.color = '#c7d2fe')}
+                  onMouseLeave={(e) => (e.currentTarget.style.color = '#818cf8')}
+                >
+                  Forgot Password?
+                </button>
+              </div>
+            )}
+
+            {/* Submit Action Button */}
             <button
               type="submit"
               disabled={loading}
@@ -621,9 +780,9 @@ export const LoginPage: React.FC = () => {
               style={{ marginTop: '4px' }}
             >
               {loading ? (
-                <span>Authenticating...</span>
+                <span>Processing...</span>
               ) : (
-                <span>{tab === 'login' ? 'Sign In' : 'Create Account'}</span>
+                <span>{tab === 'login' ? 'Sign In' : tab === 'register' ? 'Create Account' : 'Reset Password'}</span>
               )}
             </button>
           </form>

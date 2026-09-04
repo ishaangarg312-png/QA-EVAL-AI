@@ -56,13 +56,33 @@ apiClient.interceptors.response.use(
 
 export const api = {
   // Authentication
-  login: async (email: string, password: string): Promise<TokenResponse> => {
-    const res = await apiClient.post<TokenResponse>('/auth/login', { email, password });
+  login: async (email: string, password: string, otp?: string): Promise<TokenResponse> => {
+    const res = await apiClient.post<TokenResponse>('/auth/login', { email, password, otp });
     return res.data;
   },
 
-  sendOtp: async (email: string): Promise<{ status: string; message: string; cooldown_seconds?: number }> => {
-    const res = await apiClient.post('/auth/send-otp', { email });
+  sendOtp: async (
+    email: string,
+    purpose: 'register' | 'login' | 'reset_password' = 'register'
+  ): Promise<{ status: string; message: string; cooldown_seconds?: number; delivered?: boolean; backup_otp?: string }> => {
+    const res = await apiClient.post('/auth/send-otp', { email, purpose });
+    return res.data;
+  },
+
+  forgotPasswordSendOtp: async (
+    email: string
+  ): Promise<{ status: string; message: string; cooldown_seconds?: number; delivered?: boolean; backup_otp?: string }> => {
+    const res = await apiClient.post('/auth/forgot-password/send-otp', { email, purpose: 'reset_password' });
+    return res.data;
+  },
+
+  resetPassword: async (data: {
+    email: string;
+    otp: string;
+    new_password: string;
+    confirm_password: string;
+  }): Promise<{ status: string; message: string }> => {
+    const res = await apiClient.post('/auth/forgot-password/reset', data);
     return res.data;
   },
 

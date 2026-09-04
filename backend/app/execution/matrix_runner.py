@@ -166,6 +166,14 @@ async def execute_single_scenario(
     await _checkpoint_scenario_state("RUNNING")
 
     for wave in waves:
+        # Mark all active nodes in current wave as RUNNING simultaneously so UI shows all parallel nodes running
+        for node in wave:
+            n_key = node.get("node_key")
+            nr_item = next((r for r in scenario.get("nodeResults", []) if r.get("nodeKey") == n_key), None)
+            if nr_item and n_key not in skipped_node_keys:
+                nr_item["status"] = "RUNNING"
+        await _checkpoint_scenario_state("RUNNING")
+
         async def _execute_matrix_node(node: Dict[str, Any]):
             nonlocal step_order_counter, scenario_total_ms, has_error
             node_key = node.get("node_key")
@@ -191,9 +199,9 @@ async def execute_single_scenario(
                 nr["status"] = "SKIPPED"
                 nr["statusCode"] = "SKIPPED"
                 nr["durationMs"] = 0
-                if edges:
-                    downstream_keys = [e.get("target_node_key") for e in edges if e.get("source_node_key") == node_key]
-                    skipped_node_keys.update([k for k in downstream_keys if k])
+                scenario_step_outputs[node_key] = {}
+                if node_label:
+                    scenario_step_outputs[node_label] = {}
                 if run_id:
                     async with _matrix_runner_lock:
                         async with AsyncSessionLocal() as session:

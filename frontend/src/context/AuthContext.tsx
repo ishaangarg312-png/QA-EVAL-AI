@@ -8,7 +8,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   googleClientId: string | null;
-  login: (email: string, password: string) => Promise<TokenResponse>;
+  login: (email: string, password: string, otp?: string) => Promise<TokenResponse>;
   loginWithGoogle: (idToken: string) => Promise<TokenResponse>;
   register: (data: { email: string; full_name: string; password: string; role?: string; otp?: string }) => Promise<User>;
   logout: () => void;
@@ -81,8 +81,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [token]);
 
-  const login = async (email: string, password: string): Promise<TokenResponse> => {
-    const res = await api.login(email, password);
+  const login = async (email: string, password: string, otp?: string): Promise<TokenResponse> => {
+    const res = await api.login(email, password, otp);
     setToken(res.access_token);
     localStorage.setItem('auth_token', res.access_token);
     
