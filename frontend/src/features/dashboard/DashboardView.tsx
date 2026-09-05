@@ -42,7 +42,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const totalRuns = executions.length;
   const passedRuns = executions.filter((e) => e.status === 'PASSED').length;
-  const avgAccuracy = totalRuns > 0 ? `${((passedRuns / totalRuns) * 100).toFixed(1)}%` : '89.4%';
+  const avgAccuracy = totalRuns > 0 ? `${((passedRuns / totalRuns) * 100).toFixed(1)}%` : '0%';
 
   const defaultProjects: Partial<Project>[] = [
     { id: 'sage-agent', name: 'Sage Agent', description: 'G42 Orchestrator Agent for multi-turn messaging and tools' },
@@ -101,7 +101,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400" style={{ color: '#94a3b8' }}>EVALUATIONS RUN</div>
             <div className="text-3xl font-extrabold text-slate-900 font-display" style={{ color: '#0f172a' }}>
-              {totalRuns > 0 ? `${totalRuns}` : '1.2k'}
+              {totalRuns > 0 ? `${totalRuns}` : '0'}
             </div>
           </div>
         </div>
@@ -200,8 +200,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 key={p.id}
                 onClick={() => onSelectProject && onSelectProject(p)}
                 className={`rounded-2xl p-5 border transition-all cursor-pointer shadow-sm relative flex flex-col justify-between h-44 ${isSelected
-                    ? 'border-indigo-500 ring-2 ring-indigo-500/20'
-                    : 'border-slate-200 hover:border-slate-300'
+                  ? 'border-indigo-500 ring-2 ring-indigo-500/20'
+                  : 'border-slate-200 hover:border-slate-300'
                   }`}
                 style={{ backgroundColor: '#ffffff', borderColor: isSelected ? '#6366f1' : '#e2e8f0' }}
               >

@@ -77,3 +77,6 @@ frontend/*.local
 .DS_Store
 Thumbs.db
 .neon
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/scratch/

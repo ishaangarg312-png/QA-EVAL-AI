@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
 import uuid
-from sqlalchemy import Column, String, DateTime, Enum, ForeignKey, Text, JSON
+from sqlalchemy import Column, String, DateTime, Enum, ForeignKey, Text, JSON, Float, Integer
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 from app.domain.types import UserRole
 
 def generate_uuid() -> str:
     return str(uuid.uuid4())
+
 
 class Organization(Base):
     __tablename__ = "organizations"
@@ -62,3 +63,36 @@ class AuditLog(Base):
     resource_id = Column(String(36), nullable=True)
     details = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class AIProviderSetting(Base):
+    __tablename__ = "ai_provider_settings"
+
+    provider = Column(String(50), primary_key=True)  # 'groq', 'gemini', 'openai'
+    api_key_encrypted = Column(Text, nullable=True)   # Primary key encrypted (backwards compatibility)
+    api_keys = Column(JSON, default=list)             # List of up to 10 keys: [{"id", "name", "api_key_encrypted", "is_active", "is_primary", "created_at"}]
+    is_enabled = Column(String(10), default="true", nullable=False)  # "true" or "false"
+    available_models = Column(JSON, default=list)     # List of discovered model dicts
+    selected_models = Column(JSON, default=list)      # List of model IDs selected by admin
+    custom_endpoint = Column(String(255), nullable=True)
+    updated_by = Column(String(255), nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class LLMUsageLog(Base):
+    __tablename__ = "llm_usage_logs"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=True, index=True)
+    provider = Column(String(50), nullable=False, index=True)  # 'groq', 'gemini', 'openai'
+    model = Column(String(100), nullable=False, index=True)
+    prompt_tokens = Column(Integer, default=0, nullable=False)
+    completion_tokens = Column(Integer, default=0, nullable=False)
+    total_tokens = Column(Integer, default=0, nullable=False)
+    latency_ms = Column(Float, default=0.0, nullable=False)
+    request_type = Column(String(50), default="COMPLETION")  # 'TEST_CONNECTION', 'PARAMETERIZE_JSON', 'WORKFLOW', 'EVALUATION'
+    status = Column(String(20), default="SUCCESS")  # 'SUCCESS', 'FAILED'
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+

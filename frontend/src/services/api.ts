@@ -21,7 +21,25 @@ import {
   SwarmMessage,
   AdminUser,
   SystemMetrics,
-  KillSwitchItem
+  KillSwitchItem,
+  AIProviderConfig,
+  DiscoveredModel,
+  ActivePlatformModel,
+  AIProviderKeyItem,
+  ModelTestConnectionResult,
+  AIUsageSummary,
+  UserAIUsage,
+  AIUsageLogItem,
+  GenerateTestPayload,
+  GenerateTestResponse,
+  ExportGeneratorExcelPayload,
+  GeneratorColumnConfig,
+  GeneratedTestCaseItem,
+  EntityLevel,
+  GenerateDocPayload,
+  GenerateDocResponse,
+  ExportDocPayload,
+  DocumentContentModel
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -617,8 +635,268 @@ export const api = {
     const res = await apiClient.post('/admin/emergency-kill', { reason });
     return res.data;
   },
+
+  getAIProviders: async (): Promise<{ total: number; providers: AIProviderConfig[] }> => {
+    const res = await apiClient.get('/admin/ai-providers');
+    return res.data;
+  },
+
+  discoverAIModels: async (provider: string, apiKey?: string): Promise<{
+    provider: string;
+    available_models: DiscoveredModel[];
+    selected_models: string[];
+    count: number;
+    selected_count: number;
+    is_configured: boolean;
+    masked_key?: string;
+    message: string;
+  }> => {
+    const res = await apiClient.post(`/admin/ai-providers/${provider}/discover`, { api_key: apiKey });
+    return res.data;
+  },
+
+  updateAIProvider: async (
+    provider: string,
+    data: { api_key?: string; is_enabled?: boolean; selected_models?: string[]; custom_endpoint?: string }
+  ): Promise<{
+    provider: string;
+    is_configured: boolean;
+    is_enabled: boolean;
+    masked_key?: string;
+    selected_models: string[];
+    available_models: DiscoveredModel[];
+    message: string;
+  }> => {
+    const res = await apiClient.put(`/admin/ai-providers/${provider}`, data);
+    return res.data;
+  },
+
+  getActiveAIModels: async (): Promise<{ total: number; models: ActivePlatformModel[] }> => {
+    const res = await apiClient.get('/admin/ai-providers/active-models');
+    return res.data;
+  },
+
+  addAIProviderKey: async (
+    provider: string,
+    data: { api_key: string; name?: string; is_primary?: boolean }
+  ): Promise<{
+    provider: string;
+    key_id: string;
+    keys_count: number;
+    api_keys: AIProviderKeyItem[];
+    message: string;
+  }> => {
+    const res = await apiClient.post(`/admin/ai-providers/${provider}/keys`, data);
+    return res.data;
+  },
+
+  updateAIProviderKey: async (
+    provider: string,
+    keyId: string,
+    data: { name?: string; is_active?: boolean; is_primary?: boolean }
+  ): Promise<{
+    provider: string;
+    key_id: string;
+    api_keys: AIProviderKeyItem[];
+    message: string;
+  }> => {
+    const res = await apiClient.put(`/admin/ai-providers/${provider}/keys/${keyId}`, data);
+    return res.data;
+  },
+
+  deleteAIProviderKey: async (
+    provider: string,
+    keyId: string
+  ): Promise<{
+    provider: string;
+    deleted_key_id: string;
+    keys_count: number;
+    api_keys: AIProviderKeyItem[];
+    message: string;
+  }> => {
+    const res = await apiClient.delete(`/admin/ai-providers/${provider}/keys/${keyId}`);
+    return res.data;
+  },
+
+  testModelConnection: async (
+    provider: string,
+    data?: { model_id?: string; key_id?: string; api_key?: string; discover_models?: boolean }
+  ): Promise<ModelTestConnectionResult> => {
+    const res = await apiClient.post(`/admin/ai-providers/${provider}/test-connection`, data || {});
+    return res.data;
+  },
+
+  getAIUsageSummary: async (): Promise<AIUsageSummary> => {
+    const res = await apiClient.get('/admin/ai-usage/summary');
+    return res.data;
+  },
+
+  getAIUsageByUsers: async (): Promise<{ total_users: number; users: UserAIUsage[] }> => {
+    const res = await apiClient.get('/admin/ai-usage/users');
+    return res.data;
+  },
+
+  getAIUsageLogs: async (params?: { user_id?: string; limit?: number }): Promise<{ total: number; logs: AIUsageLogItem[] }> => {
+    const res = await apiClient.get('/admin/ai-usage/logs', { params });
+    return res.data;
+  },
+
+  // -------------------------------------------------------------
+  // Test Case & Test Data Generator
+  // -------------------------------------------------------------
+  parseGeneratorDocument: async (file: File): Promise<{
+    status: string;
+    filename: string;
+    char_count: number;
+    word_count: number;
+    text: string;
+    meta?: Record<string, any>;
+  }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await apiClient.post('/generator/parse-document', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+
+  generateTestSuite: async (payload: GenerateTestPayload): Promise<GenerateTestResponse> => {
+    const res = await apiClient.post('/generator/generate', payload);
+    return res.data;
+  },
+
+  exportGeneratorExcel: async (payload: ExportGeneratorExcelPayload): Promise<Blob> => {
+    const res = await apiClient.post('/generator/export-excel', payload, {
+      responseType: 'blob',
+    });
+    return res.data;
+  },
+
+  saveGeneratorDataset: async (payload: {
+    project_id: string;
+    name: string;
+    description?: string;
+    data: any[];
+    columns: GeneratorColumnConfig[];
+  }): Promise<{ status: string; message: string; dataset_id: string; name: string; total_rows: number }> => {
+    const res = await apiClient.post('/generator/save-dataset', payload);
+    return res.data;
+  },
+
+  getGeneratorProjectConfig: async (projectId: string): Promise<{
+    status: string;
+    project_id: string;
+    master_prompt?: string;
+    instructions?: string;
+    template_design?: {
+      columns: GeneratorColumnConfig[];
+      entity_levels?: EntityLevel[];
+      mode?: string;
+      max_test_cases?: number;
+      max_test_data_per_case?: number;
+    };
+  }> => {
+    const res = await apiClient.get(`/generator/projects/${projectId}/config`);
+    return res.data;
+  },
+
+  saveGeneratorProjectPrompt: async (projectId: string, prompt: string): Promise<{ status: string; message: string }> => {
+    const res = await apiClient.post(`/generator/projects/${projectId}/save-prompt`, { prompt });
+    return res.data;
+  },
+
+  saveGeneratorProjectInstructions: async (projectId: string, instructions: string): Promise<{ status: string; message: string }> => {
+    const res = await apiClient.post(`/generator/projects/${projectId}/save-instructions`, { instructions });
+    return res.data;
+  },
+
+  saveGeneratorProjectTemplate: async (
+    projectId: string,
+    payload: {
+      columns: GeneratorColumnConfig[];
+      entity_levels?: EntityLevel[];
+      mode?: string;
+      max_test_cases?: number;
+      max_test_data_per_case?: number;
+    }
+  ): Promise<{ status: string; message: string; template_design: any }> => {
+    const res = await apiClient.post(`/generator/projects/${projectId}/save-template`, payload);
+    return res.data;
+  },
+
+  importGeneratorTemplateExcel: async (file: File): Promise<{
+    status: string;
+    filename: string;
+    columns: GeneratorColumnConfig[];
+    entity_levels: EntityLevel[];
+    mode: string;
+  }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await apiClient.post('/generator/import-template-excel', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return res.data;
+  },
+
+  // -----------------------------------------------------------
+  // Document Generator API (DOCX, PDF, PPTX)
+  // -----------------------------------------------------------
+  generateTestDocument: async (payload: GenerateDocPayload): Promise<GenerateDocResponse> => {
+    const res = await apiClient.post('/doc-generator/generate', payload);
+    return res.data;
+  },
+
+  exportTestDocument: async (payload: ExportDocPayload): Promise<Blob> => {
+    const res = await apiClient.post('/doc-generator/export', payload, {
+      responseType: 'blob',
+    });
+    return res.data;
+  },
+
+  getDocGeneratorProjectConfig: async (projectId: string): Promise<{
+    status: string;
+    project_id: string;
+    master_prompt?: string;
+    instructions?: string;
+    config?: {
+      document_type?: string;
+      template_preset?: string;
+      target_count?: number;
+      theme?: string;
+    };
+  }> => {
+    const res = await apiClient.get(`/doc-generator/projects/${projectId}/config`);
+    return res.data;
+  },
+
+  saveDocGeneratorProjectPrompt: async (projectId: string, prompt: string): Promise<{ status: string; message: string }> => {
+    const res = await apiClient.post(`/doc-generator/projects/${projectId}/save-prompt`, { prompt });
+    return res.data;
+  },
+
+  saveDocGeneratorProjectInstructions: async (projectId: string, instructions: string): Promise<{ status: string; message: string }> => {
+    const res = await apiClient.post(`/doc-generator/projects/${projectId}/save-instructions`, { instructions });
+    return res.data;
+  },
+
+  saveDocGeneratorProjectConfig: async (
+    projectId: string,
+    config: {
+      document_type?: string;
+      template_preset?: string;
+      target_count?: number;
+      theme?: string;
+      master_prompt?: string;
+      instructions?: string;
+    }
+  ): Promise<{ status: string; message: string }> => {
+    const res = await apiClient.post(`/doc-generator/projects/${projectId}/save-config`, config);
+    return res.data;
+  },
 };
 
 export const apiService = api;
+
 
 

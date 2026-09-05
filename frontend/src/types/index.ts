@@ -524,3 +524,313 @@ export interface QueueTaskItem {
   completed_at?: string;
 }
 
+// ---------------------------------------------------------------------------
+// AI PROVIDER & USAGE TYPES
+// ---------------------------------------------------------------------------
+export interface AIProviderKeyItem {
+  id: string;
+  name: string;
+  masked_key: string;
+  is_active: boolean;
+  is_primary: boolean;
+  request_count?: number;
+  created_at: string;
+}
+
+export interface DiscoveredModel {
+  id: string;
+  name: string;
+  provider: string;
+  description?: string;
+  context_window?: number;
+  input_price_per_m?: number;
+  output_price_per_m?: number;
+  supports_vision?: boolean;
+  supports_function_calling?: boolean;
+  is_recommended?: boolean;
+  tags?: string[];
+}
+
+export interface ActivePlatformModel {
+  id: string;
+  model_id?: string;
+  name?: string;
+  display_name?: string;
+  provider: string;
+  is_default?: boolean;
+  is_recommended?: boolean;
+}
+
+export interface AIProviderConfig {
+  provider: string;
+  name: string;
+  description: string;
+  docs_url: string;
+  key_prefix_hint: string;
+  is_enabled: boolean;
+  is_configured: boolean;
+  max_keys?: number;
+  masked_key?: string;
+  api_keys: AIProviderKeyItem[];
+  available_models: DiscoveredModel[];
+  selected_models: string[];
+  custom_endpoint?: string;
+  updated_at?: string;
+}
+
+export interface ModelTestConnectionResult {
+  success: boolean;
+  message?: string;
+  latency_ms: number;
+  models_found?: number;
+  provider?: string;
+  model?: string;
+  available_models?: any[];
+  selected_count?: number;
+  error?: string;
+  tokens_used?: any;
+  response_preview?: string;
+}
+
+export interface AIUsageSummary {
+  total_tokens: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_requests: number;
+  successful_requests?: number;
+  failed_requests?: number;
+  avg_latency_ms: number;
+  by_provider?: Record<string, { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number; requests?: number; tokens?: number }>;
+}
+
+export interface UserAIUsage {
+  user_id: string;
+  username: string;
+  full_name: string;
+  email: string;
+  role: string;
+  total_tokens: number;
+  total_requests: number;
+  successful_requests: number;
+  failed_requests: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  request_count: number;
+  last_active_at?: string | null;
+}
+
+export interface AIUsageLogItem {
+  id: string;
+  user_id?: string;
+  username?: string;
+  user_email?: string;
+  provider: string;
+  model: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  latency_ms: number;
+  request_type: string;
+  status: string;
+  error_message?: string;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// TEST GENERATOR TYPES
+// ---------------------------------------------------------------------------
+export type GeneratorMode = 'both' | 'test_case' | 'test_cases' | 'test_data' | 'hybrid';
+
+export interface GeneratorColumnConfig {
+  id: string;
+  name: string;
+  scope?: string;
+  entity_id?: string;
+  merge_rows?: boolean;
+  type?: 'string' | 'number' | 'boolean' | 'date' | 'enum' | 'json';
+  required?: boolean;
+  description?: string;
+  enum_values?: string[];
+  example?: string;
+  level?: string;
+}
+
+export interface EntityLevel {
+  id: string;
+  level_id?: string;
+  name: string;
+  parent_id?: string;
+  description?: string;
+  max_items_per_parent?: number;
+  branching_ratio?: number;
+  columns: GeneratorColumnConfig[];
+}
+
+export interface GeneratedTestCaseItem {
+  test_case_id: string;
+  title: string;
+  description?: string;
+  category?: string;
+  severity?: string;
+  priority?: string;
+  steps: string[];
+  expected_result?: string;
+  test_data?: Record<string, any>;
+  level_values?: Record<string, string>;
+}
+
+export interface GenerateTestPayload {
+  prompt?: string;
+  master_prompt?: string;
+  instructions?: string;
+  domain_preset?: string;
+  mode?: GeneratorMode;
+  max_test_cases?: number;
+  max_test_data_per_case?: number;
+  target_rows?: number;
+  columns?: GeneratorColumnConfig[];
+  hierarchy?: EntityLevel[];
+  entity_levels?: EntityLevel[];
+  model_id?: string;
+  provider?: string;
+  document_text?: string;
+}
+
+export interface GenerateTestResponse {
+  status: string;
+  columns?: GeneratorColumnConfig[];
+  hierarchy?: EntityLevel[];
+  rows?: Record<string, any>[];
+  data?: any;
+  total_rows?: number;
+  total_cases?: number;
+  total_data_rows?: number;
+  model?: string;
+  provider?: string;
+  latency_ms?: number;
+  total_tokens?: number;
+  validation_warnings?: Array<{ severity: 'warning' | 'error'; type: string; message: string }>;
+}
+
+export interface ExportGeneratorExcelPayload {
+  mode?: GeneratorMode;
+  sheet_name?: string;
+  columns?: GeneratorColumnConfig[];
+  hierarchy?: EntityLevel[];
+  entity_levels?: EntityLevel[];
+  rows?: Record<string, any>[];
+  data?: any;
+  filename?: string;
+  theme?: string;
+}
+
+// ---------------------------------------------------------------------------
+// TEST DOCUMENT GENERATOR (DOCX / PDF / PPTX) TYPES
+// ---------------------------------------------------------------------------
+export type DocGeneratorFormat = 'all' | 'docx' | 'pdf' | 'pptx';
+
+export interface DocTable {
+  headers: string[];
+  rows: string[][];
+  caption?: string;
+}
+
+export interface DocCallout {
+  type: 'info' | 'warning' | 'critical' | 'success' | 'note';
+  title?: string;
+  content: string;
+}
+
+export interface DocSection {
+  heading: string;
+  level: number;
+  summary?: string;
+  paragraphs?: string[];
+  bullet_points?: string[];
+  callouts?: DocCallout[];
+  tables?: DocTable[];
+  key_metrics?: Array<Record<string, string>>;
+}
+
+export interface PptxSlideCard {
+  title: string;
+  content: string;
+  value?: string;
+  description?: string;
+  badge?: string;
+  icon?: string;
+}
+
+export interface PptxSlide {
+  slide_number: number;
+  layout_type: 'title_slide' | 'agenda' | 'card_grid' | 'split_columns' | 'metric_callout' | 'table_slide' | 'conclusion';
+  title: string;
+  subtitle?: string;
+  bullet_points?: string[];
+  cards?: PptxSlideCard[];
+  metrics?: Array<Record<string, string>>;
+  table?: DocTable;
+  speaker_notes?: string;
+}
+
+export interface DocumentMetadata {
+  title: string;
+  subtitle?: string;
+  author?: string;
+  organization?: string;
+  version?: string;
+  classification?: string;
+  date_str?: string;
+  project_name?: string;
+  document_type?: string;
+  confidentiality?: string;
+  target_pages?: number;
+  target_slides?: number;
+  summary?: string;
+}
+
+export interface DocumentContentModel {
+  meta: DocumentMetadata;
+  executive_summary?: string;
+  sections: DocSection[];
+  slides: PptxSlide[];
+}
+
+export interface GenerateDocPayload {
+  document_type: 'docx' | 'pdf' | 'pptx' | 'all';
+  template_preset?: string;
+  master_prompt: string;
+  instructions?: string;
+  target_count: number;
+  document_text?: string;
+  model_id?: string;
+  provider?: string;
+  title?: string;
+  theme?: string;
+}
+
+export interface GenerateDocRequest extends GenerateDocPayload {}
+
+export interface GenerateDocResponse {
+  status: string;
+  document_type: string;
+  title: string;
+  content: DocumentContentModel;
+  total_sections: number;
+  total_slides: number;
+  model: string;
+  provider: string;
+  latency_ms: number;
+  total_tokens: number;
+}
+
+export interface ExportDocPayload {
+  document_type: 'docx' | 'pdf' | 'pptx' | 'all' | 'all_zip';
+  content: DocumentContentModel;
+  filename?: string;
+  theme?: string;
+}
+
+
+
+

@@ -56,7 +56,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      <header className="h-14 border-b border-slate-200 bg-white px-6 flex items-center justify-between sticky top-0 z-40 shadow-xs">
+      <header
+        style={{ height: '3.5rem', flexShrink: 0 }}
+        className="h-14 border-b border-slate-200 bg-white px-6 flex items-center justify-between shrink-0 sticky top-0 z-40 shadow-xs"
+      >
         {/* Brand & Project Selector */}
         <div className="flex items-center gap-4">
           {/* Brand */}

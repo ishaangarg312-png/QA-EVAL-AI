@@ -21,6 +21,8 @@ import { LiveTraceViewer } from './features/executions/LiveTraceViewer';
 import { EvaluationView } from './features/evaluation/EvaluationView';
 import { RegressionMatrix } from './features/regression/RegressionMatrix';
 import { TestManagementView } from './features/test_management/TestManagementView';
+import { TestGeneratorView } from './features/generator/TestGeneratorView';
+import { TestDocGeneratorView } from './features/doc_generator/TestDocGeneratorView';
 import { UploadDocumentView } from './features/documents/UploadDocumentView';
 import { SwarmAsyncHubView } from './features/swarm_async/SwarmAsyncHubView';
 import { AdminPanelView } from './features/admin/AdminPanelView';
@@ -421,10 +423,10 @@ export const App: React.FC = () => {
         await api.batchDeleteProjects(projectIds);
       }
       showToast(`🗑️ Successfully deleted ${projectIds.length} project${projectIds.length > 1 ? 's' : ''}.`);
-      
+
       const updatedProjects = await api.getProjects();
       setProjects(updatedProjects);
-      
+
       if (currentProject && projectIds.includes(currentProject.id)) {
         const nextProj = updatedProjects[0] || null;
         setCurrentProject(nextProj);
@@ -460,7 +462,7 @@ export const App: React.FC = () => {
         const storageKey = currentProject ? `workflow_live_variables_${currentProject.id}` : 'workflow_live_variables';
         const saved = localStorage.getItem(storageKey);
         if (saved) initialVars = JSON.parse(saved);
-      } catch {}
+      } catch { }
 
       const result = await api.triggerExecution({
         project_id: currentProject.id,
@@ -560,13 +562,13 @@ export const App: React.FC = () => {
           }
           localStorage.removeItem('active_matrix_job_id');
           localStorage.setItem('matrix_job_completed_event', JSON.stringify({ ...statusData, _ts: Date.now() }));
-          
+
           // Broadcast to all duplicate tabs
           try {
             const bc = new BroadcastChannel('matrix_jobs_sync');
             bc.postMessage({ type: 'JOB_COMPLETED', job: statusData });
             bc.close();
-          } catch {}
+          } catch { }
 
           setShowMatrixCelebration(true);
           showToast(`🎉 Backend Matrix Job Complete: ${statusData.total_scenarios} Scenarios Executed!`);
@@ -575,7 +577,7 @@ export const App: React.FC = () => {
             api.getExecutions(currentProject.id).then((allExecs) => {
               setExecutions(allExecs);
               if (allExecs.length > 0) setSelectedExecution(allExecs[0]);
-            }).catch(() => {});
+            }).catch(() => { });
           }
           return;
         } else if (statusData.status === 'CANCELLED') {
@@ -658,7 +660,7 @@ export const App: React.FC = () => {
               }
             }
           }
-        } catch {}
+        } catch { }
       }
 
       // If no active job for current project, clear state
@@ -684,11 +686,11 @@ export const App: React.FC = () => {
             api.getExecutions(currentProject.id).then((allExecs) => {
               setExecutions(allExecs);
               if (allExecs.length > 0) setSelectedExecution(allExecs[0]);
-            }).catch(() => {});
+            }).catch(() => { });
           }
         }
       };
-    } catch {}
+    } catch { }
 
     // Cross-tab storage synchronization listener
     const handleStorageChange = (e: StorageEvent) => {
@@ -709,9 +711,9 @@ export const App: React.FC = () => {
             api.getExecutions(currentProject.id).then((allExecs) => {
               setExecutions(allExecs);
               if (allExecs.length > 0) setSelectedExecution(allExecs[0]);
-            }).catch(() => {});
+            }).catch(() => { });
           }
-        } catch {}
+        } catch { }
       }
     };
 
@@ -970,7 +972,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#f4f6f8] flex selection:bg-indigo-600 selection:text-white">
+    <div className="flex h-full w-full overflow-hidden bg-[#f4f6f8] selection:bg-indigo-600 selection:text-white">
       {/* Toast Notification (Top Center Floating Banner) */}
       {toastMessage && (
         <div
@@ -1005,14 +1007,14 @@ export const App: React.FC = () => {
             api.getExecutions(currentProject.id).then((allExecs) => {
               setExecutions(allExecs);
               if (allExecs.length > 0) setSelectedExecution(allExecs[0]);
-            }).catch(() => {});
+            }).catch(() => { });
           }
         }}
         pendingHITLCount={pendingHITLCount}
       />
 
       {/* Right Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 bg-[#f4f6f8]">
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden bg-[#f4f6f8]">
         {/* Top Navbar */}
         <Navbar
           projects={projects}
@@ -1030,7 +1032,13 @@ export const App: React.FC = () => {
         />
 
         {/* Main Workspace */}
-        <main className="flex-1 p-8 overflow-y-auto bg-[#f4f6f8]">
+        <main
+          className={`flex-1 min-h-0 flex flex-col bg-[#f4f6f8] ${
+            ['test_generator', 'test_document', 'workflows'].includes(activeTab)
+              ? 'p-0 overflow-hidden'
+              : 'p-8 overflow-y-auto'
+          }`}
+        >
           {activeTab === 'dashboard' && (
             <DashboardView
               executions={executions}
@@ -1090,6 +1098,18 @@ export const App: React.FC = () => {
             />
           )}
 
+          {activeTab === 'test_generator' && (
+            <TestGeneratorView
+              currentProject={currentProject}
+            />
+          )}
+
+          {activeTab === 'test_document' && (
+            <TestDocGeneratorView
+              currentProject={currentProject}
+            />
+          )}
+
           {activeTab === 'upload_document' && (
             <UploadDocumentView
               currentProject={currentProject}
@@ -1131,13 +1151,12 @@ export const App: React.FC = () => {
                     <h3 className="text-base font-bold font-display text-slate-900">Release Quality Gate Policies</h3>
                     <p className="text-xs text-slate-500 mt-0.5">Automated deployment guardrails and policy thresholds for {currentProject?.name}</p>
                   </div>
-                  <div className={`px-3 py-1 rounded-xl text-xs font-bold border ${
-                    executions.length === 0
+                  <div className={`px-3 py-1 rounded-xl text-xs font-bold border ${executions.length === 0
                       ? 'bg-slate-100 text-slate-600 border-slate-200'
                       : releaseDecision?.verdict === 'GO'
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-rose-50 text-rose-700 border-rose-200'
-                  }`}>
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                        : 'bg-rose-50 text-rose-700 border-rose-200'
+                    }`}>
                     {executions.length === 0 ? 'PENDING (NO RUNS)' : releaseDecision?.verdict === 'GO' ? 'GO (Release Approved)' : 'NO-GO (BLOCKED)'}
                   </div>
                 </div>
@@ -1244,12 +1263,12 @@ export const App: React.FC = () => {
         (activeMatrixJob.status === 'RUNNING' || activeMatrixJob.status === 'INTERRUPTED') &&
         (!activeMatrixJob.project_id || (currentProject && activeMatrixJob.project_id === currentProject.id)) &&
         !isMatrixModalOpen && (
-        <div
-          ref={pillRef}
-          onMouseDown={handlePillMouseDown}
-          style={
-            pillPos
-              ? {
+          <div
+            ref={pillRef}
+            onMouseDown={handlePillMouseDown}
+            style={
+              pillPos
+                ? {
                   position: 'fixed',
                   left: `${pillPos.x}px`,
                   top: `${pillPos.y}px`,
@@ -1263,7 +1282,7 @@ export const App: React.FC = () => {
                   transform: isDraggingPill ? 'scale(1.02)' : 'scale(1)',
                   transition: isDraggingPill ? 'none' : 'box-shadow 0.2s, border-color 0.2s, transform 0.2s',
                 }
-              : {
+                : {
                   position: 'fixed',
                   bottom: '24px',
                   right: '24px',
@@ -1275,121 +1294,120 @@ export const App: React.FC = () => {
                   userSelect: 'none',
                   cursor: 'grab',
                 }
-          }
-          className="p-3.5 pr-4 rounded-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 group"
-          title="Drag anywhere on this card to move it around"
-        >
-          {/* Subtle drag handle */}
-          <div className="text-slate-500 group-hover:text-slate-300 transition-colors shrink-0">
-            <GripVertical className="w-4 h-4" />
-          </div>
-
-          <div
-            style={{
-              backgroundColor: activeMatrixJob.status === 'INTERRUPTED' ? '#451a03' : '#1e293b',
-              border: activeMatrixJob.status === 'INTERRUPTED' ? '1px solid #d97706' : '1px solid #0284c7',
-            }}
-            className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-              activeMatrixJob.status === 'INTERRUPTED' ? 'text-amber-400' : 'text-sky-400'
-            } shrink-0 shadow-inner pointer-events-none`}
+            }
+            className="p-3.5 pr-4 rounded-2xl flex items-center gap-3 animate-in slide-in-from-bottom-5 group"
+            title="Drag anywhere on this card to move it around"
           >
+            {/* Subtle drag handle */}
+            <div className="text-slate-500 group-hover:text-slate-300 transition-colors shrink-0">
+              <GripVertical className="w-4 h-4" />
+            </div>
+
+            <div
+              style={{
+                backgroundColor: activeMatrixJob.status === 'INTERRUPTED' ? '#451a03' : '#1e293b',
+                border: activeMatrixJob.status === 'INTERRUPTED' ? '1px solid #d97706' : '1px solid #0284c7',
+              }}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeMatrixJob.status === 'INTERRUPTED' ? 'text-amber-400' : 'text-sky-400'
+                } shrink-0 shadow-inner pointer-events-none`}
+            >
+              {activeMatrixJob.status === 'INTERRUPTED' ? (
+                <AlertTriangle className="w-5 h-5" />
+              ) : (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              )}
+            </div>
+            <div className="space-y-0.5 pointer-events-none">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white tracking-tight">
+                  {activeMatrixJob.status === 'INTERRUPTED' ? 'Matrix Job Interrupted' : 'Backend Matrix Job Running'}
+                </span>
+                <span
+                  style={{
+                    backgroundColor: activeMatrixJob.status === 'INTERRUPTED' ? '#78350f' : '#1e293b',
+                    color: activeMatrixJob.status === 'INTERRUPTED' ? '#fcd34d' : '#38bdf8',
+                    border: activeMatrixJob.status === 'INTERRUPTED' ? '1px solid #d97706' : '1px solid #0284c7',
+                  }}
+                  className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold"
+                >
+                  {activeMatrixJob.completed_scenarios || 0} of {activeMatrixJob.total_scenarios || 0} Done
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-300 font-mono truncate max-w-[260px]">
+                {activeMatrixJob.status === 'INTERRUPTED'
+                  ? 'Server rebooted. Click Resume to finish remaining scenarios.'
+                  : activeMatrixJob.current_scenario_title || activeMatrixJob.dataset_name || 'Executing scenarios...'}
+              </p>
+            </div>
+
             {activeMatrixJob.status === 'INTERRUPTED' ? (
-              <AlertTriangle className="w-5 h-5" />
+              <div className="flex items-center gap-1.5 ml-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleResumeJob(activeMatrixJob.job_id);
+                  }}
+                  className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-1"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Resume</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMatrixModalOpen(true);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all cursor-pointer"
+                >
+                  <span>Details</span>
+                </button>
+              </div>
             ) : (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <div className="flex items-center gap-1.5 ml-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMatrixModalOpen(true);
+                  }}
+                  style={{ backgroundColor: '#2563eb' }}
+                  className="px-3.5 py-2 rounded-xl hover:bg-blue-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                >
+                  <span>View Progress</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (window.confirm('Kill running flow and cancel all tasks immediately?')) {
+                      handleCancelAllFlows();
+                    }
+                  }}
+                  className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                  title="Immediately kill running flow and all tasks"
+                >
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <span>Cancel All</span>
+                </button>
+              </div>
             )}
-          </div>
-          <div className="space-y-0.5 pointer-events-none">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-white tracking-tight">
-                {activeMatrixJob.status === 'INTERRUPTED' ? 'Matrix Job Interrupted' : 'Backend Matrix Job Running'}
-              </span>
-              <span
-                style={{
-                  backgroundColor: activeMatrixJob.status === 'INTERRUPTED' ? '#78350f' : '#1e293b',
-                  color: activeMatrixJob.status === 'INTERRUPTED' ? '#fcd34d' : '#38bdf8',
-                  border: activeMatrixJob.status === 'INTERRUPTED' ? '1px solid #d97706' : '1px solid #0284c7',
-                }}
-                className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold"
-              >
-                {activeMatrixJob.completed_scenarios || 0} of {activeMatrixJob.total_scenarios || 0} Done
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-300 font-mono truncate max-w-[260px]">
-              {activeMatrixJob.status === 'INTERRUPTED'
-                ? 'Server rebooted. Click Resume to finish remaining scenarios.'
-                : activeMatrixJob.current_scenario_title || activeMatrixJob.dataset_name || 'Executing scenarios...'}
-            </p>
-          </div>
 
-          {activeMatrixJob.status === 'INTERRUPTED' ? (
-            <div className="flex items-center gap-1.5 ml-1 shrink-0">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleResumeJob(activeMatrixJob.job_id);
-                }}
-                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold shadow-md transition-all cursor-pointer flex items-center gap-1"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Resume</span>
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMatrixModalOpen(true);
-                }}
-                className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all cursor-pointer"
-              >
-                <span>Details</span>
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 ml-1 shrink-0">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMatrixModalOpen(true);
-                }}
-                style={{ backgroundColor: '#2563eb' }}
-                className="px-3.5 py-2 rounded-xl hover:bg-blue-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-              >
-                <span>View Progress</span>
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (window.confirm('Kill running flow and cancel all tasks immediately?')) {
-                    handleCancelAllFlows();
-                  }
-                }}
-                className="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md transition-all cursor-pointer flex items-center gap-1 shrink-0"
-                title="Immediately kill running flow and all tasks"
-              >
-                <Square className="w-3.5 h-3.5 fill-current" />
-                <span>Cancel All</span>
-              </button>
-            </div>
-          )}
-
-          {/* Dismiss / Close Button */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDismissJob(activeMatrixJob.job_id);
-            }}
-            className="w-7 h-7 rounded-xl bg-slate-800/80 hover:bg-rose-950 hover:text-rose-300 text-slate-400 flex items-center justify-center transition-colors cursor-pointer shrink-0 ml-1 border border-slate-700/60"
-            title="Dismiss notification"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
+            {/* Dismiss / Close Button */}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDismissJob(activeMatrixJob.job_id);
+              }}
+              className="w-7 h-7 rounded-xl bg-slate-800/80 hover:bg-rose-950 hover:text-rose-300 text-slate-400 flex items-center justify-center transition-colors cursor-pointer shrink-0 ml-1 border border-slate-700/60"
+              title="Dismiss notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
       {/* ========================================================================= */}
       {/* GLOBAL MATRIX PROGRESS & RESULTS MODAL */}
@@ -1403,15 +1421,14 @@ export const App: React.FC = () => {
             {/* Modal Header */}
             <div className="flex items-center justify-between border-b border-slate-100 p-5 shrink-0 bg-slate-50/70">
               <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-xs ${
-                  activeMatrixJob.status === 'RUNNING'
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center text-white shadow-xs ${activeMatrixJob.status === 'RUNNING'
                     ? 'bg-indigo-600 animate-pulse'
                     : activeMatrixJob.status === 'INTERRUPTED'
-                    ? 'bg-amber-600'
-                    : activeMatrixJob.status === 'CANCELLED' || activeMatrixJob.status === 'FAILED'
-                    ? 'bg-rose-600'
-                    : 'bg-emerald-600'
-                }`}>
+                      ? 'bg-amber-600'
+                      : activeMatrixJob.status === 'CANCELLED' || activeMatrixJob.status === 'FAILED'
+                        ? 'bg-rose-600'
+                        : 'bg-emerald-600'
+                  }`}>
                   {activeMatrixJob.status === 'RUNNING' ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : activeMatrixJob.status === 'INTERRUPTED' ? (
@@ -1430,33 +1447,32 @@ export const App: React.FC = () => {
                       {activeMatrixJob.status === 'RUNNING'
                         ? `Executing Workflow on Matrix (${activeMatrixJob.scenario_results?.[0]?.nodeResults?.length || currentWorkflow?.nodes?.length || ''} Nodes)...`
                         : activeMatrixJob.status === 'CANCELLED'
-                        ? 'Matrix Execution Killed (Circuit Breaker Active)'
-                        : activeMatrixJob.status === 'INTERRUPTED'
-                        ? 'Matrix Execution Interrupted (Crash Recovery Available)'
-                        : activeMatrixJob.status === 'FAILED'
-                        ? 'Matrix Execution Finished with Failures'
-                        : 'Matrix Batch Execution Finished'}
+                          ? 'Matrix Execution Killed (Circuit Breaker Active)'
+                          : activeMatrixJob.status === 'INTERRUPTED'
+                            ? 'Matrix Execution Interrupted (Crash Recovery Available)'
+                            : activeMatrixJob.status === 'FAILED'
+                              ? 'Matrix Execution Finished with Failures'
+                              : 'Matrix Batch Execution Finished'}
                     </h3>
-                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${
-                      activeMatrixJob.status === 'RUNNING'
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${activeMatrixJob.status === 'RUNNING'
                         ? 'bg-amber-50 text-amber-700 border border-amber-200'
                         : activeMatrixJob.status === 'CANCELLED'
-                        ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                        : activeMatrixJob.status === 'INTERRUPTED'
-                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                        : activeMatrixJob.status === 'FAILED'
-                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                    }`}>
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                          : activeMatrixJob.status === 'INTERRUPTED'
+                            ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                            : activeMatrixJob.status === 'FAILED'
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                      }`}>
                       {activeMatrixJob.status === 'RUNNING'
                         ? 'IN PROGRESS'
                         : activeMatrixJob.status === 'CANCELLED'
-                        ? 'KILLED (503 BLOCKED)'
-                        : activeMatrixJob.status === 'INTERRUPTED'
-                        ? 'INTERRUPTED (DURABLE CHECKPOINT)'
-                        : activeMatrixJob.status === 'FAILED'
-                        ? 'FAILED SCENARIOS DETECTED'
-                        : 'ALL COMPLETED'}
+                          ? 'KILLED (503 BLOCKED)'
+                          : activeMatrixJob.status === 'INTERRUPTED'
+                            ? 'INTERRUPTED (DURABLE CHECKPOINT)'
+                            : activeMatrixJob.status === 'FAILED'
+                              ? 'FAILED SCENARIOS DETECTED'
+                              : 'ALL COMPLETED'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500">
@@ -1560,32 +1576,30 @@ export const App: React.FC = () => {
                 return (
                   <div
                     key={sIdx}
-                    className={`rounded-2xl border p-4 space-y-3 transition-all ${
-                      isScenarioRunning
+                    className={`rounded-2xl border p-4 space-y-3 transition-all ${isScenarioRunning
                         ? 'bg-indigo-50/40 border-indigo-300 ring-2 ring-indigo-400/20'
                         : isScenarioSuccess
-                        ? 'bg-white border-emerald-200 shadow-xs'
-                        : isScenarioCancelled
-                        ? 'bg-rose-50/40 border-rose-300'
-                        : isScenarioFailed
-                        ? 'bg-rose-50/30 border-rose-200'
-                        : 'bg-slate-50 border-slate-200 opacity-60'
-                    }`}
+                          ? 'bg-white border-emerald-200 shadow-xs'
+                          : isScenarioCancelled
+                            ? 'bg-rose-50/40 border-rose-300'
+                            : isScenarioFailed
+                              ? 'bg-rose-50/30 border-rose-200'
+                              : 'bg-slate-50 border-slate-200 opacity-60'
+                      }`}
                   >
                     {/* Scenario Header with Row Data */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2.5">
-                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold ${
-                          isScenarioSuccess
+                        <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono font-bold ${isScenarioSuccess
                             ? 'bg-emerald-600 text-white'
                             : isScenarioRunning
-                            ? 'bg-indigo-600 text-white animate-spin'
-                            : isScenarioCancelled
-                            ? 'bg-rose-700 text-white'
-                            : isScenarioFailed
-                            ? 'bg-rose-600 text-white'
-                            : 'bg-slate-200 text-slate-600'
-                        }`}>
+                              ? 'bg-indigo-600 text-white animate-spin'
+                              : isScenarioCancelled
+                                ? 'bg-rose-700 text-white'
+                                : isScenarioFailed
+                                  ? 'bg-rose-600 text-white'
+                                  : 'bg-slate-200 text-slate-600'
+                          }`}>
                           {sIdx + 1}
                         </span>
                         <div>
@@ -1607,17 +1621,16 @@ export const App: React.FC = () => {
                             {Number(scenario.totalDurationMs).toFixed(0)}ms
                           </span>
                         )}
-                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold ${
-                          isScenarioSuccess
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono font-bold ${isScenarioSuccess
                             ? 'bg-emerald-100 text-emerald-800'
                             : isScenarioRunning
-                            ? 'bg-indigo-100 text-indigo-800'
-                            : isScenarioCancelled
-                            ? 'bg-rose-100 text-rose-800 border border-rose-300'
-                            : isScenarioFailed
-                            ? 'bg-rose-100 text-rose-800'
-                            : 'bg-slate-100 text-slate-600'
-                        }`}>
+                              ? 'bg-indigo-100 text-indigo-800'
+                              : isScenarioCancelled
+                                ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                                : isScenarioFailed
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-slate-100 text-slate-600'
+                          }`}>
                           {isScenarioCancelled ? 'KILLED' : scenario.status}
                         </span>
                       </div>
@@ -1636,37 +1649,35 @@ export const App: React.FC = () => {
                         return (
                           <div
                             key={nIdx}
-                            className={`p-3 rounded-xl border transition-all text-xs flex flex-col justify-between ${
-                              isNodeRunning
+                            className={`p-3 rounded-xl border transition-all text-xs flex flex-col justify-between ${isNodeRunning
                                 ? 'bg-indigo-50/80 border-indigo-300 ring-2 ring-indigo-400/30'
                                 : isNodeSuccess
-                                ? 'bg-emerald-50/50 border-emerald-200'
-                                : isNodeCancelled
-                                ? 'bg-rose-50/60 border-rose-300'
-                                : isNodeSkipped
-                                ? 'bg-amber-50/60 border-amber-200'
-                                : isNodeFailed
-                                ? 'bg-rose-50/60 border-rose-200'
-                                : 'bg-slate-100/70 border-slate-200 opacity-60'
-                            }`}
+                                  ? 'bg-emerald-50/50 border-emerald-200'
+                                  : isNodeCancelled
+                                    ? 'bg-rose-50/60 border-rose-300'
+                                    : isNodeSkipped
+                                      ? 'bg-amber-50/60 border-amber-200'
+                                      : isNodeFailed
+                                        ? 'bg-rose-50/60 border-rose-200'
+                                        : 'bg-slate-100/70 border-slate-200 opacity-60'
+                              }`}
                           >
                             <div className="flex items-center justify-between">
                               <span className="font-bold text-slate-900 truncate max-w-[120px]">
                                 {nr.nodeLabel}
                               </span>
-                              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                                isNodeSuccess
+                              <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${isNodeSuccess
                                   ? 'bg-emerald-100 text-emerald-800'
                                   : isNodeRunning
-                                  ? 'bg-indigo-100 text-indigo-800 animate-pulse'
-                                  : isNodeCancelled
-                                  ? 'bg-rose-100 text-rose-800 border border-rose-200 font-bold'
-                                  : isNodeSkipped
-                                  ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                                  : isNodeFailed
-                                  ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-slate-200 text-slate-600'
-                              }`}>
+                                    ? 'bg-indigo-100 text-indigo-800 animate-pulse'
+                                    : isNodeCancelled
+                                      ? 'bg-rose-100 text-rose-800 border border-rose-200 font-bold'
+                                      : isNodeSkipped
+                                        ? 'bg-amber-100 text-amber-900 border border-amber-200'
+                                        : isNodeFailed
+                                          ? 'bg-rose-100 text-rose-800'
+                                          : 'bg-slate-200 text-slate-600'
+                                }`}>
                                 {isNodeRunning ? 'RUNNING...' : isNodeCancelled ? 'KILLED' : isNodeSkipped ? 'SKIPPED' : nr.statusCode ? `${nr.statusCode} ${nr.statusCode === 200 ? 'OK' : ''}` : nr.status}
                               </span>
                             </div>
@@ -1759,12 +1770,12 @@ export const App: React.FC = () => {
                 {activeMatrixJob.status === 'RUNNING'
                   ? '⚡ Backend background worker is executing HTTP requests...'
                   : activeMatrixJob.status === 'CANCELLED'
-                  ? '🛑 Flow execution terminated by administrator (Kill Switch Active).'
-                  : activeMatrixJob.status === 'INTERRUPTED'
-                  ? `⚠️ Execution was interrupted at scenario #${(activeMatrixJob.completed_scenarios || 0) + 1}. You can resume seamlessly.`
-                  : activeMatrixJob.status === 'FAILED'
-                  ? '⚠️ Some scenarios encountered errors during execution.'
-                  : '✅ All scenarios executed cleanly in background.'}
+                    ? '🛑 Flow execution terminated by administrator (Kill Switch Active).'
+                    : activeMatrixJob.status === 'INTERRUPTED'
+                      ? `⚠️ Execution was interrupted at scenario #${(activeMatrixJob.completed_scenarios || 0) + 1}. You can resume seamlessly.`
+                      : activeMatrixJob.status === 'FAILED'
+                        ? '⚠️ Some scenarios encountered errors during execution.'
+                        : '✅ All scenarios executed cleanly in background.'}
               </span>
               <div className="flex items-center gap-2 flex-wrap">
                 {activeMatrixJob.status === 'INTERRUPTED' && (
@@ -1828,11 +1839,10 @@ export const App: React.FC = () => {
                 )}
                 <button
                   onClick={() => setIsMatrixModalOpen(false)}
-                  className={`px-5 py-2 rounded-xl text-white text-xs font-bold shadow-xs cursor-pointer transition-all ${
-                    activeMatrixJob.status === 'RUNNING'
+                  className={`px-5 py-2 rounded-xl text-white text-xs font-bold shadow-xs cursor-pointer transition-all ${activeMatrixJob.status === 'RUNNING'
                       ? 'bg-slate-800 hover:bg-slate-900'
                       : 'bg-indigo-600 hover:bg-indigo-700'
-                  }`}
+                    }`}
                 >
                   {activeMatrixJob.status === 'RUNNING' ? 'Run in Background ▾' : 'Close'}
                 </button>
@@ -1908,7 +1918,7 @@ export const App: React.FC = () => {
                       const allExecs = await api.getExecutions(currentProject.id);
                       setExecutions(allExecs);
                       if (allExecs.length > 0) setSelectedExecution(allExecs[0]);
-                    } catch {}
+                    } catch { }
                   }
                 }}
                 className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"

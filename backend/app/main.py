@@ -34,6 +34,8 @@ from app.api.v1 import (
     documents,
     queue,
     admin,
+    generator,
+    doc_generator,
 )
 from app.core.kill_switch import SystemKillSwitchManager
 
@@ -241,6 +243,8 @@ app.include_router(demo.router, prefix=settings.API_V1_STR, dependencies=auth_de
 app.include_router(documents.router, prefix=settings.API_V1_STR, dependencies=auth_deps)
 app.include_router(queue.router, prefix=settings.API_V1_STR, dependencies=auth_deps)
 app.include_router(admin.router, prefix=settings.API_V1_STR, dependencies=auth_deps)
+app.include_router(generator.router, prefix=settings.API_V1_STR, dependencies=auth_deps)
+app.include_router(doc_generator.router, prefix=settings.API_V1_STR, dependencies=auth_deps)
 
 @app.get("/health", tags=["Health"])
 async def health_check():

@@ -1,5 +1,5 @@
 from app.core.database import Base
-from app.models.organization import Organization, User, AuditLog
+from app.models.organization import Organization, User, AuditLog, AIProviderSetting, SystemKillSwitch, LLMUsageLog
 from app.models.project import Project, Environment, SecretItem
 from app.models.agent import Agent, AgentVersion
 from app.models.test_case import TestSuite, TestCase, TestDataset
@@ -13,6 +13,11 @@ __all__ = [
     "Organization",
     "User",
     "AuditLog",
+    "AIProviderSetting",
+    "SystemKillSwitch",
+    "LLMUsageLog",
+
+
     "Project",
     "Environment",
     "SecretItem",

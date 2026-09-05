@@ -37,19 +37,22 @@
   padding: 0;
 }
 
-html, body {
-  background-color: #f4f6f8 !important;
-  color: #0f172a !important;
-  min-height: 100vh;
+html, body, #root {
+  background-color: #f4f6f8;
+  color: #0f172a;
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-#root {
-  min-height: 100vh;
-  background-color: #f4f6f8;
-}
+.h-screen { height: 100vh; }
+.w-screen { width: 100vw; }
+.min-h-screen { min-height: 100vh; }
 
 button {
   cursor: pointer;
@@ -85,6 +88,10 @@ h1, h2, h3, h4, h5, .font-display {
 }
 
 /* Layout Utilities */
+.block { display: block !important; }
+.inline-block { display: inline-block !important; }
+.inline { display: inline !important; }
+.hidden { display: none !important; }
 .flex { display: flex; }
 .inline-flex { display: inline-flex; }
 .flex-col { flex-direction: column; }
@@ -412,6 +419,17 @@ h1, h2, h3, h4, h5, .font-display {
 .bg-amber-100 { background-color: #fef3c7 !important; }
 .bg-amber-500 { background-color: #f59e0b !important; }
 .bg-amber-600 { background-color: #d97706 !important; }
+.bg-amber-50\/40 { background-color: rgba(254, 243, 199, 0.4) !important; }
+
+.bg-orange-50 { background-color: #fff7ed !important; }
+.bg-orange-50\/70 { background-color: rgba(255, 247, 237, 0.7) !important; }
+.bg-orange-100 { background-color: #ffedd5 !important; }
+.bg-orange-200 { background-color: #fed7aa !important; }
+.bg-orange-500 { background-color: #f97316 !important; }
+.bg-orange-600 { background-color: #ea580c !important; }
+.bg-orange-700 { background-color: #c2410c !important; }
+.bg-blue-50\/70 { background-color: rgba(239, 246, 255, 0.7) !important; }
+.bg-emerald-50\/70 { background-color: rgba(236, 253, 245, 0.7) !important; }
 
 .bg-purple-50 { background-color: #faf5ff !important; }
 .bg-purple-100 { background-color: #f3e8ff !important; }
@@ -501,6 +519,12 @@ h1, h2, h3, h4, h5, .font-display {
 .text-cyan-900 { color: #164e63 !important; }
 .text-cyan-950 { color: #083344 !important; }
 
+.text-orange-500 { color: #f97316 !important; }
+.text-orange-600 { color: #ea580c !important; }
+.text-orange-700 { color: #c2410c !important; }
+.text-orange-800 { color: #9a3412 !important; }
+.text-orange-900 { color: #7c2d12 !important; }
+
 /* Borders & Widths */
 .border { border-width: 1px; border-style: solid; border-color: #e2e8f0; }
 .border-2 { border-width: 2px !important; border-style: solid; }
@@ -554,7 +578,13 @@ h1, h2, h3, h4, h5, .font-display {
 .border-rose-500 { border-color: #f43f5e !important; }
 
 .border-amber-200 { border-color: #fde68a !important; }
+.border-amber-300 { border-color: #fcd34d !important; }
 .border-amber-500 { border-color: #f59e0b !important; }
+
+.border-orange-100 { border-color: #ffedd5 !important; }
+.border-orange-200 { border-color: #fed7aa !important; }
+.border-orange-300 { border-color: #fdba74 !important; }
+.border-orange-500 { border-color: #f97316 !important; }
 
 /* Shadows */
 .shadow-none { box-shadow: none; }
@@ -605,6 +635,10 @@ h1, h2, h3, h4, h5, .font-display {
 .hover\:bg-rose-100:hover { background-color: #ffe4e6 !important; }
 .hover\:bg-rose-600:hover { background-color: #e11d48 !important; }
 .hover\:bg-rose-700:hover { background-color: #be123c !important; }
+.hover\:bg-orange-600:hover { background-color: #ea580c !important; }
+.hover\:bg-orange-700:hover { background-color: #c2410c !important; }
+.hover\:bg-amber-600:hover { background-color: #d97706 !important; }
+.hover\:bg-amber-700:hover { background-color: #b45309 !important; }
 .hover\:border-slate-300:hover { border-color: #cbd5e1 !important; }
 .hover\:border-blue-500:hover { border-color: #3b82f6 !important; }
 .hover\:border-blue-600:hover { border-color: #2563eb !important; }
@@ -950,3 +984,108 @@ tr:hover td {
   color: #ffffff;
   transform: translateY(-1px);
 }
+
+/* =========================================================================
+   FIGMA EXACT DARK ENTERPRISE SIDEBAR SPEC
+   ========================================================================= */
+
+.figma-sidebar-root {
+  background-color: #0b0f19 !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.08) !important;
+  color: #f8fafc !important;
+  width: 260px !important;
+  min-width: 260px !important;
+  max-width: 260px !important;
+  height: 100% !important;
+  max-height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  flex-shrink: 0 !important;
+  user-select: none !important;
+  position: relative !important;
+  z-index: 30 !important;
+}
+
+.figma-sidebar-header {
+  padding: 14px 16px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background-color: #0b0f19 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  flex-shrink: 0 !important;
+  height: 60px !important;
+}
+
+.figma-sidebar-nav {
+  flex: 1 1 0% !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 10px 10px !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  scrollbar-width: thin !important;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent !important;
+}
+
+.figma-sidebar-nav::-webkit-scrollbar {
+  width: 4px !important;
+}
+.figma-sidebar-nav::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+.figma-sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-radius: 9999px !important;
+}
+
+.figma-nav-section-title {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  color: #64748b !important;
+  padding: 2px 8px !important;
+  margin-bottom: 2px !important;
+  font-family: 'JetBrains Mono', monospace !important;
+}
+
+.figma-nav-btn {
+  width: 100% !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  transition: all 0.15s ease !important;
+  border: 1px solid transparent !important;
+  color: #94a3b8 !important;
+  background-color: transparent !important;
+  text-align: left !important;
+  height: 34px !important;
+}
+
+.figma-nav-btn:hover {
+  background-color: rgba(255, 255, 255, 0.06) !important;
+  color: #ffffff !important;
+}
+
+.figma-nav-btn.active {
+  background: linear-gradient(90deg, #6366f1 0%, #8b5cf6 60%, #a855f7 100%) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  box-shadow: 0 4px 14px -2px rgba(99, 102, 241, 0.5) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+.figma-sidebar-footer {
+  padding: 10px 12px !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background-color: #070a12 !important;
+  flex-shrink: 0 !important;
+}
+
